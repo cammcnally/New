@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+.mypy_cache/
+.venv/
+venv/
+env/
+
+# IDE / editor
+.cursor/
+.idea/
+*.swp
+*.swo
+
+# Optional: uncomment to avoid committing large outputs
+# pipeline_outputs/
+# pipeline_outputs_*/
+# *.csv
