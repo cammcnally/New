@@ -43,21 +43,22 @@ As of this checkpoint:
 - stitched calendar-day outer-test validation is implemented
 - WRC, DSR, occupancy, turnover, holding-period, capacity, and regime-policy fields are wired into outputs
 - resume/version fields are wired into artifacts
-- helper-level validation has been run
 - a full decision-grade end-to-end validation run has not yet been completed
 - automated tests have not yet been added
+- feature validation, model comparison, scorecard defaults, canonical reproducibility mode, and cache policy still need to be closed out
 
 ## Stage tracker
 
-### Stage 0 — Freeze spec
+### Stage 0 - Freeze spec
 
 Status: `done`
 
-Deliverable:
+Deliverables:
 
 - `docs/phase1-research-spec.md`
+- this roadmap
 
-### Stage 1 — Data / label integrity
+### Stage 1 - Data / label integrity
 
 Status: `partial`
 
@@ -74,9 +75,10 @@ Still to tighten:
 
 - explicit assertions for no forward liquidity leakage
 - explicit assertions for no hidden universe leakage
+- explicit cost-model snapshot validation
 - explicit validation memo for feature/label/liquidity timing
 
-### Stage 2 — Feature registry
+### Stage 2 - Feature registry
 
 Status: `partial`
 
@@ -95,40 +97,41 @@ Still to add:
 
 No anonymous feature should be promoted once this stage is complete.
 
-### Stage 3 — Feature validation
+### Stage 3 - Feature validation
 
 Status: `pending`
 
-Needed outputs:
+Needed output:
 
-- `feature_validation_report.csv`
+- `03_features/feature_validation_report.csv`
 
 Core checks to add:
 
-- OOS IC / rank correlation
-- t-stat
+- OOS cross-sectional Spearman IC
+- HAC t-stat
 - sign stability across folds
 - regime stability
-- monotonicity by bucket/decile
+- monotonicity by decile
 - incremental lift after costs
+- explicit `insufficient_data` status where required
 
-### Stage 4 — Model assembly
+### Stage 4 - Model assembly
 
 Status: `pending`
 
-Needed outputs:
+Needed output:
 
-- `model_comparison_report`
+- `04_strategies/model_comparison_report.csv`
 
 Required comparisons:
 
 - simple linear baseline
 - equal-weight rank blend
-- prior baseline model
+- incumbent ML stack
 
 ML promotion should remain strictly OOS and must beat simpler baselines economically, not just statistically.
 
-### Stage 5 — Strategy construction
+### Stage 5 - Strategy construction
 
 Status: `mostly_done`
 
@@ -143,10 +146,11 @@ Already in place:
 
 Still to add or review:
 
-- dedicated position/ranking audit log
-- end-to-end validation that all artifact rows are deterministic across reruns
+- dedicated `position_ranking_audit.csv`
+- implementation-status / verification-stage fields in outputs
+- deterministic cache policy and canonical rerun comparisons
 
-### Stage 6 — Robustness and execution realism
+### Stage 6 - Robustness and execution realism
 
 Status: `mostly_done`
 
@@ -163,14 +167,15 @@ Already in place:
 - regime-policy diagnostics
 - promotion flags and reasons
 
-Still to review:
+Still to add or review:
 
+- Sortino and scorecard-default reporting
 - power/sufficiency behavior of WRC on real runs
 - expected-R mapping stability on thin-support folds
-- capacity drag realism on representative data
-- add Sortino if the viability scorecard is going to be enforced in-code
+- capacity headroom and capacity-drag thresholds
+- canonical reproducibility mode
 
-### Stage 7 — Tests
+### Stage 7 - Tests
 
 Status: `pending`
 
@@ -188,6 +193,8 @@ Minimum helper tests:
 - WRC moving-block bootstrap
 - expected-R mapping
 - stitched-series construction
+- cross-sectional IC construction
+- cost-model schema validation
 
 Minimum rule/smoke tests:
 
@@ -198,15 +205,70 @@ Minimum rule/smoke tests:
 - WRC failure suppresses promotion
 - non-positive DSR blocks promotion
 - capacity uses lagged fields only
+- canonical rerun reproduces outputs with caches disabled
 
 ## Ordered next actions
 
-1. add helper tests for the new metrics/plumbing
-2. add regression and smoke tests for fold skipping, DSR gating, and resume/version mismatch
-3. run a representative smoke pipeline and inspect artifact completeness
-4. write a short validation memo covering WRC pass/fail behavior, occupancy, capacity drag, and regime concentration
-5. run the final Phase 1 decision-grade rerun
-6. only if Phase 1 is stable and refactoring would materially improve diagnosis or safe extension, consider a Phase 2 auditability refactor
+1. add the remaining frozen-spec fields to docs and code paths
+2. implement feature validation, scorecard defaults, cost-model schema, and model comparison
+3. add helper, regression, and smoke tests
+4. run Tier 1 and Tier 2 smoke and only then mark `smoke_validated`
+5. run Tier 3 preproduction smoke and inspect artifact completeness
+6. run the final Phase 1 decision-grade rerun
+7. run a canonical reproducibility rerun with deterministic settings and caches disabled
+8. only if Phase 1 is stable and refactoring would materially improve diagnosis or safe extension, consider a Phase 2 auditability refactor
+
+## Smoke ladder
+
+`pipeline_outputs_smoke` is overwrite-oriented and should be cleared before each tier.
+
+### Tier 1 - plumbing
+
+- tickers: `AMD`, `MSFT`, `CAT`, `RTX`
+- history: 18 months
+- reduced smoke config:
+  - `outer_train_months = 6`
+  - `outer_test_months = 2`
+  - `threshold_holdout_months = 1`
+  - `calibration_holdout_months = 1`
+  - `inner_folds = 2`
+- required checks:
+  - run completes
+  - artifacts written
+  - no schema errors
+
+### Tier 2 - behavior sanity
+
+- tickers: `AMD`, `MSFT`, `CAT`, `RTX`, `AMAT`, `CSCO`, `MU`, `LRCX`
+- history: `2016-01-01` onward
+- canonical Phase 1 config
+- required checks:
+  - WRC runs
+  - skip logic runs
+  - stitched OOS exists
+  - occupancy / capacity / turnover metrics are populated
+
+### Tier 3 - preproduction
+
+- tickers: all available tickers in `panel_ohlcv_clean.csv`
+- history: `2018-01-01` onward
+- canonical Phase 1 config
+- required checks:
+  - promotion logic exercised
+  - scorecard populated
+  - required artifacts are complete
+
+### Final decision-grade run
+
+- all available tickers
+- full available history
+- canonical Phase 1 config
+
+### Canonical reproducibility rerun
+
+- same data scope as final run
+- deterministic single-thread settings
+- caches cleared and disabled
 
 ## Definition of Phase 1 completion
 
@@ -217,7 +279,7 @@ Phase 1 is complete only when all of the following are true:
 - tests pass
 - report states scope boundaries narrowly and correctly
 - strategy either passes or fails promotion under the new rules
-- result is reproducible from a clean rerun
+- result is reproducible from a clean canonical rerun
 
 If all of the above are true, the project is considered complete for research and governance purposes.
 

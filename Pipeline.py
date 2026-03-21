@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import logging
 import math
@@ -79,6 +80,10 @@ class PipelineConfig:
     slippage_per_fill: float = 0.0001
     overnight_brokerage: float = 0.0003
     max_adv_participation: float = 0.02
+    headroom_adv_participation: float = 0.015
+    max_clipped_or_skipped_order_fraction: float = 0.05
+    max_capacity_drag_fraction_live: float = 0.10
+    max_capacity_drag_fraction_allocation: float = 0.10
     # Label geometry
     atr_length: int = 14
     stop_atr_multiple: float = 1.0
@@ -107,6 +112,11 @@ class PipelineConfig:
     threshold_wrc_min_trades: int = 20
     threshold_wrc_min_avg_active_exposure: float = 0.10
     empirical_prob_map_min_rows: int = 200
+    empirical_prob_map_min_bucket_rows: int = 30
+    empirical_prob_map_buckets: int = 10
+    empirical_prob_map_min_top_bucket_positive_fraction: float = 0.60
+    empirical_prob_map_max_fallback_usage_fraction: float = 0.25
+    empirical_prob_map_min_adjacent_fold_spearman: float = 0.70
     final_min_oos_daily_observations: int = 126
     # Base models
     rf_n_estimators: int = 300
@@ -142,6 +152,8 @@ class PipelineConfig:
     random_seed: int = 42
     n_jobs_tree_models: int = -1
     n_jobs_xgb: int = 8
+    deterministic_mode: bool = False
+    cache_enabled: bool = False
     # Seed robustness
     seed_mode: str = "single"  # "single" | "research" | "final"
     seed_list_research: Tuple[int, ...] = (11, 23, 42, 57, 73)
@@ -150,6 +162,14 @@ class PipelineConfig:
     use_optuna_tuning: bool = False
     optuna_n_trials: int = 20
     require_baseline_pass_for_tuning: bool = True
+    # Verification / artifact semantics
+    implementation_status: str = "present"
+    verification_stage_reached: str = "code_present"
+    # Cost-model schema
+    commission_per_side: float = 0.0
+    spread_source: str = "embedded_in_slippage_assumption_v1"
+    reject_or_clip_penalty: str = "explicit_capacity_drag"
+    idle_cash_treatment: str = "included_in_daily_equity_series"
 
 
 # Minimum rows in threshold holdout for threshold selection to be meaningful
@@ -160,12 +180,21 @@ MIN_CALIBRATION_HOLDOUT_ROWS = 200
 MIN_CALIBRATION_HOLDOUT_POS = 25
 MIN_CALIBRATION_HOLDOUT_NEG = 25
 
-SCHEMA_VERSION = "2.0.0"
-ROBUSTNESS_METHOD_VERSION = "phase1_threshold_wrc_nw_v1"
+SCHEMA_VERSION = "2.1.0"
+ROBUSTNESS_METHOD_VERSION = "phase1_threshold_wrc_nw_v2"
 SEARCH_FAMILY_DEFINITION_VERSION = "threshold_policy_family_v1"
 THRESHOLD_SEARCH_CORRECTED = True
 FULL_PIPELINE_CORRECTED = False
 TRIAL_SCOPE_FORMAL = "threshold_policy_search_only"
+SCORECARD_LABEL = "scorecard_default_thresholds_v1"
+SCORECARD_ARCHETYPE = "concentrated_multi_day_strategy_max8"
+IMPLEMENTATION_STATUS_VALUES: Tuple[str, ...] = (
+    "planned",
+    "present",
+    "unit_tested",
+    "smoke_validated",
+    "reproducible_verified",
+)
 
 NORMAL_DIST = NormalDist()
 _EULER_GAMMA = 0.5772156649015329
@@ -684,6 +713,21 @@ def compute_daily_return_diagnostics(
     }
 
 
+def compute_sortino_ratio(
+    returns: Sequence[float],
+    *,
+    annualization_factor: float = 252.0,
+) -> float:
+    series = pd.Series(list(returns), dtype=float).replace([np.inf, -np.inf], np.nan).dropna()
+    if len(series) < 2:
+        return 0.0
+    downside = series[series < 0]
+    downside_std = float(np.sqrt(np.mean(np.square(downside)))) if len(downside) else 0.0
+    if downside_std <= 0:
+        return float("inf") if float(series.mean()) > 0 else 0.0
+    return float(series.mean() / downside_std * math.sqrt(annualization_factor))
+
+
 def compute_deflated_sharpe(
     daily_returns: Sequence[float],
     *,
@@ -907,6 +951,117 @@ def evaluate_capacity_rule_compliance(trades_df: pd.DataFrame, config: PipelineC
     }
 
 
+def capacity_headroom_metrics(
+    trades_df: pd.DataFrame,
+    metrics: Mapping[str, Any],
+    config: PipelineConfig,
+) -> Dict[str, Any]:
+    clipped = int(metrics.get("capacity_clipped_orders", 0) or 0)
+    skipped = int(metrics.get("capacity_skipped_orders", 0) or 0)
+    total_trades = int(metrics.get("n_trades", len(trades_df)) or 0)
+    total_orders = max(total_trades + skipped, 1)
+    clipped_or_skipped_fraction = float((clipped + skipped) / total_orders)
+    gross_alpha = float(
+        trades_df["pnl"].clip(lower=0.0).sum() if len(trades_df) and "pnl" in trades_df.columns else 0.0
+    )
+    capacity_drag = float(metrics.get("capacity_clipped_pnl_drag", 0.0) or 0.0)
+    capacity_drag_fraction = float(capacity_drag / gross_alpha) if gross_alpha > 1e-12 else 0.0
+    p95_participation = float(metrics.get("p95_participation_rate", 0.0) or 0.0)
+    return {
+        "clipped_or_skipped_order_fraction": clipped_or_skipped_fraction,
+        "capacity_drag_fraction_of_gross_alpha": capacity_drag_fraction,
+        "capacity_headroom_pass": bool(
+            p95_participation <= float(config.headroom_adv_participation)
+            and clipped_or_skipped_fraction <= float(config.max_clipped_or_skipped_order_fraction)
+            and capacity_drag_fraction <= float(config.max_capacity_drag_fraction_live)
+        ),
+    }
+
+
+def evaluate_scorecard_defaults(
+    metrics: Mapping[str, Any],
+) -> Dict[str, Any]:
+    adjusted_sharpe = float(metrics.get("adjusted_sharpe_daily", 0.0) or 0.0)
+    profit_factor = float(metrics.get("profit_factor", 0.0) or 0.0)
+    sortino = float(metrics.get("sortino_daily", 0.0) or 0.0)
+    calmar = float(metrics.get("stitched_daily_calmar", metrics.get("calmar", 0.0)) or 0.0)
+    max_drawdown = float(metrics.get("stitched_daily_mdd", metrics.get("mdd", 0.0)) or 0.0)
+    dsr = float(metrics.get("deflated_sharpe_daily", -1.0) or -1.0)
+    gross_edge_to_cost = float(metrics.get("gross_edge_to_round_trip_cost", 0.0) or 0.0)
+    closed_trades = int(metrics.get("n_trades", 0) or 0)
+    nonzero_days = int(metrics.get("n_nonzero_return_days", 0) or 0)
+    positive_fold_fraction = float(metrics.get("positive_fold_fraction", 0.0) or 0.0)
+    positive_regimes = int(metrics.get("regime_positive_count", 0) or 0)
+    top_regime_share = float(metrics.get("top_regime_pnl_share", np.nan))
+    capacity_headroom_pass = bool(metrics.get("capacity_headroom_pass", False))
+    calendar_days = int(metrics.get("n_daily_observations", 0) or 0)
+    research_viable = bool(
+        adjusted_sharpe >= 0.75
+        and profit_factor >= 1.20
+        and sortino >= 1.00
+        and calmar >= 0.50
+        and max_drawdown <= 0.25
+        and dsr > 0.0
+        and gross_edge_to_cost >= 2.0
+        and closed_trades >= 100
+        and nonzero_days >= 100
+        and positive_fold_fraction >= 0.60
+        and calendar_days >= 126
+    )
+    live_pilot_viable = bool(
+        adjusted_sharpe >= 1.00
+        and profit_factor >= 1.25
+        and sortino >= 1.50
+        and calmar >= 0.75
+        and max_drawdown <= 0.20
+        and dsr > 0.0
+        and gross_edge_to_cost >= 3.0
+        and closed_trades >= 150
+        and nonzero_days >= 150
+        and positive_fold_fraction >= 0.60
+        and positive_regimes >= 2
+        and (not np.isfinite(top_regime_share) or top_regime_share <= 0.60)
+        and calendar_days >= 252
+        and capacity_headroom_pass
+    )
+    allocation_ready = bool(
+        adjusted_sharpe >= 1.25
+        and profit_factor >= 1.40
+        and sortino >= 1.75
+        and calmar >= 1.00
+        and max_drawdown <= 0.15
+        and dsr > 0.0
+        and gross_edge_to_cost >= 4.0
+        and closed_trades >= 250
+        and nonzero_days >= 250
+        and positive_fold_fraction >= 0.67
+        and calendar_days >= 504
+        and capacity_headroom_pass
+    )
+    return {
+        "scorecard_label": SCORECARD_LABEL,
+        "scorecard_archetype": SCORECARD_ARCHETYPE,
+        "research_viable": research_viable,
+        "live_pilot_viable": live_pilot_viable,
+        "allocation_ready": allocation_ready,
+    }
+
+
+def derive_implementation_status(
+    *,
+    tests_passed: bool,
+    smoke_tier_passed: int,
+    reproducibility_verified: bool,
+) -> Tuple[str, str]:
+    if reproducibility_verified:
+        return "reproducible_verified", "canonical_rerun_match"
+    if smoke_tier_passed >= 2:
+        return "smoke_validated", f"smoke_tier_{smoke_tier_passed}"
+    if tests_passed:
+        return "unit_tested", "unit_tests"
+    return "present", "code_present"
+
+
 def moving_block_bootstrap_white_reality_check(
     return_matrix: np.ndarray,
     *,
@@ -1005,6 +1160,71 @@ def sanitize_for_json(obj: object) -> object:
     return obj
 
 
+def file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def build_code_fingerprint() -> str:
+    roots = [
+        Path(__file__),
+        Path("docs") / "phase1-research-spec.md",
+        Path("docs") / "phase1-execution-roadmap.md",
+    ]
+    digest = hashlib.sha256()
+    for path in roots:
+        if not path.exists():
+            continue
+        digest.update(str(path.as_posix()).encode("utf-8"))
+        digest.update(file_sha256(path).encode("utf-8"))
+    return digest.hexdigest()
+
+
+def build_input_data_hash(path: Path) -> str:
+    return file_sha256(path)
+
+
+def build_config_hash(config: PipelineConfig) -> str:
+    payload = sanitize_for_json(asdict(config))
+    raw = json.dumps(payload, sort_keys=True).encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()
+
+
+def effective_cost_model(config: PipelineConfig) -> Dict[str, Any]:
+    return {
+        "commission_per_side": float(config.commission_per_side),
+        "slippage_per_side": float(config.slippage_per_fill),
+        "spread_source": str(config.spread_source),
+        "borrow_or_financing_rate": float(config.overnight_brokerage),
+        "reject_or_clip_penalty": str(config.reject_or_clip_penalty),
+        "idle_cash_treatment": str(config.idle_cash_treatment),
+    }
+
+
+def validate_cost_model(config: PipelineConfig) -> Tuple[bool, List[str], Dict[str, Any]]:
+    model = effective_cost_model(config)
+    required = [
+        "commission_per_side",
+        "slippage_per_side",
+        "spread_source",
+        "borrow_or_financing_rate",
+        "reject_or_clip_penalty",
+        "idle_cash_treatment",
+    ]
+    missing = [field for field in required if field not in model or model[field] in (None, "")]
+    return len(missing) == 0, missing, model
+
+
+def verification_rank(status: str) -> int:
+    try:
+        return IMPLEMENTATION_STATUS_VALUES.index(status)
+    except ValueError:
+        return -1
+
+
 def build_resume_fingerprint(config: PipelineConfig) -> Dict[str, Any]:
     fingerprint = sanitize_for_json({k: v for k, v in asdict(config).items() if k not in {"resume", "output_dir"}})
     assert isinstance(fingerprint, dict)
@@ -1016,6 +1236,9 @@ def build_resume_fingerprint(config: PipelineConfig) -> Dict[str, Any]:
             "threshold_search_corrected": THRESHOLD_SEARCH_CORRECTED,
             "full_pipeline_corrected": FULL_PIPELINE_CORRECTED,
             "trial_scope_formal": TRIAL_SCOPE_FORMAL,
+            "scorecard_label": SCORECARD_LABEL,
+            "scorecard_archetype": SCORECARD_ARCHETYPE,
+            "code_fingerprint": build_code_fingerprint(),
         }
     )
     return cast(Dict[str, Any], fingerprint)
@@ -2697,11 +2920,13 @@ def compute_metrics(
         )
         daily_calmar = float(daily_cagr / daily_mdd) if daily_mdd > 0 else 0.0
         daily_diag = compute_daily_return_diagnostics(daily_frame["daily_return"].tolist())
+        sortino_daily = compute_sortino_ratio(daily_frame["daily_return"].tolist())
     else:
         daily_mdd = 0.0
         daily_cagr = 0.0
         daily_calmar = 0.0
         daily_diag = compute_daily_return_diagnostics([])
+        sortino_daily = 0.0
 
     active_series = (
         equity_df["active_positions"].astype(float)
@@ -2737,6 +2962,9 @@ def compute_metrics(
         else:
             avg_participation_rate = 0.0
             p95_participation_rate = 0.0
+        gross_positive_r = float(trades_df.loc[trades_df["r_multiple"] > 0, "r_multiple"].sum()) if "r_multiple" in trades_df.columns else 0.0
+        estimated_cost_r_total = float(trades_df["estimated_cost_r"].sum()) if "estimated_cost_r" in trades_df.columns else 0.0
+        gross_edge_to_round_trip_cost = float(gross_positive_r / estimated_cost_r_total) if estimated_cost_r_total > 1e-12 else 0.0
     else:
         profit_factor = 0.0
         win_rate = 0.0
@@ -2747,6 +2975,7 @@ def compute_metrics(
         trades_per_day = 0.0
         avg_participation_rate = 0.0
         p95_participation_rate = 0.0
+        gross_edge_to_round_trip_cost = 0.0
     return {
         "n_trades": int(len(trades_df)),
         "total_return": total_return,
@@ -2756,6 +2985,7 @@ def compute_metrics(
         "daily_cagr": float(daily_cagr),
         "daily_mdd": float(daily_mdd),
         "daily_calmar": float(daily_calmar),
+        "sortino_daily": float(sortino_daily),
         "profit_factor": float(profit_factor),
         "win_rate": float(win_rate),
         "expectancy_r": float(expectancy_r),
@@ -2778,6 +3008,7 @@ def compute_metrics(
         "avg_active_exposure": float(avg_active_exposure),
         "avg_participation_rate": float(avg_participation_rate),
         "p95_participation_rate": float(p95_participation_rate),
+        "gross_edge_to_round_trip_cost": float(gross_edge_to_round_trip_cost),
     }
 
 
