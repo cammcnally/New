@@ -1,0 +1,23 @@
+{
+  "feature_name": "ema_gap_13_34",
+  "english_name": "13-bar EMA relative to 34-bar EMA",
+  "family": "moving_average_trend",
+  "subfamily": "ema_structure",
+  "regular_or_physics": "regular",
+  "lookback": 34,
+  "parameters": {
+    "fast": 13,
+    "slow": 34
+  },
+  "formula_group": "ema_gap_a_b",
+  "default_enabled": true,
+  "depends_on": [
+    "close"
+  ],
+  "candidate_group_id": "ma_gap_core",
+  "orthogonality_cluster_id": "ma_gap_cluster_1",
+  "family_cap_weight": 1.0,
+  "interpretability_tag": "high",
+  "requires_external_reference": false,
+  "notes": "Core horizon-aware trend spread for 1h bars; candidate for aggressive intra-family pruning."
+}
