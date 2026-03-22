@@ -7,6 +7,9 @@ __pycache__/
 .venv/
 venv/
 env/
+.local/
+.env/
+node_modules/
 
 # IDE / editor
 .cursor/
@@ -21,3 +24,6 @@ env/
 # Pipeline run outputs (regenerable)
 pipeline_outputs/
 pipeline_outputs_*/
+
+# Local relocated Python package bundle
+python312_user_relocated/

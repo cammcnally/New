@@ -137,7 +137,7 @@ At minimum, verify:
 4. fold skip due to degenerate calibration holdout
 5. seed-robustness run on shortlisted candidates
 6. full output regeneration
-7. audit subagent regeneration of `subagent/pipeline-auditor_assessment.md`
+7. audit subagent regeneration of `docs/assessments/pipeline-auditor-latest.md`
 
 ## 11. Final report checks
 

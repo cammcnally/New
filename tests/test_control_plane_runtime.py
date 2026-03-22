@@ -7,9 +7,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from control_plane.runtime_env import LoadedSecret
-from control_plane.orchestrator import CodexControlPlane
+from control_plane.models import ActionSpec, ApprovalClass
+from control_plane.runtime_env import LoadedSecret, _python_version_is_supported
+from control_plane.orchestrator import CodexControlPlane, RepoActionRunner
 from control_plane.policy_loader import compute_loader_manifest_hash, compute_policy_fingerprint_from_payload, load_canonical_policy_payload
+from tools import control_plane as control_plane_cli
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -104,3 +106,29 @@ def test_build_agents_includes_dependency_agent(monkeypatch: pytest.MonkeyPatch,
     builder_functions = {tool.__name__: tool for tool in agents["Builder"].tools if callable(tool)}
     with pytest.raises(PermissionError):
         builder_functions["invoke_codex_backend"](tool_name="not-allowed", arguments_json="{}")
+
+
+def test_control_plane_entrypoint_python_guards_reject_out_of_range_versions() -> None:
+    control_plane_cli._require_supported_python_version((3, 12, 10))
+    assert _python_version_is_supported((3, 12, 10), "3.12.10") is True
+    assert _python_version_is_supported((3, 12, 12), "3.12.10") is True
+    assert _python_version_is_supported((3, 13, 0), "3.12.10") is False
+    with pytest.raises(SystemExit):
+        control_plane_cli._require_supported_python_version((3, 14, 2))
+
+
+def test_repo_action_runner_rejects_non_auto_approved_shell_actions() -> None:
+    action = ActionSpec(
+        name="sensitive_shell",
+        kind="shell_template",
+        command=("echo", "hello"),
+        allowed_roles=("Runner",),
+        approval=ApprovalClass.REQUIRES_HUMAN,
+        sensitive=True,
+        timeout_seconds=10,
+    )
+    policy = SimpleNamespace(action_for=lambda _name: action)
+    runner = RepoActionRunner(PROJECT_ROOT, policy)
+
+    with pytest.raises(PermissionError):
+        runner.run_shell_action("Runner", "sensitive_shell", {})

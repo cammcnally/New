@@ -33,13 +33,33 @@ def _read_expected_python_version(project_root: Path, runtime_policy: Mapping[st
     return python_version_path.read_text(encoding="utf-8").strip()
 
 
+def _parse_version_tuple(raw_version: str) -> tuple[int, int, int]:
+    parts = raw_version.strip().split(".")
+    if len(parts) != 3 or any(not part.isdigit() for part in parts):
+        raise RuntimeEnvironmentError(f"Invalid required Python version: {raw_version}")
+    return tuple(int(part) for part in parts)  # type: ignore[return-value]
+
+
+def _python_range_text(minimum: tuple[int, int, int]) -> str:
+    return f">={minimum[0]}.{minimum[1]}.{minimum[2]},<{minimum[0]}.{minimum[1] + 1}"
+
+
+def _python_version_is_supported(actual: tuple[int, int, int], required_python: str) -> bool:
+    minimum = _parse_version_tuple(required_python)
+    upper = (minimum[0], minimum[1] + 1, 0)
+    return actual >= minimum and actual < upper
+
+
 def ensure_repo_runtime(project_root: Path, runtime_policy: Mapping[str, Any]) -> dict[str, str]:
     project_root = project_root.resolve()
     expected_python = _read_expected_python_version(project_root, runtime_policy)
     actual_python = platform.python_version()
-    if actual_python != expected_python:
+    actual_python_tuple = _parse_version_tuple(actual_python)
+    minimum_python = _parse_version_tuple(expected_python)
+    if not _python_version_is_supported(actual_python_tuple, expected_python):
         raise RuntimeEnvironmentError(
-            f"Control plane requires Python {expected_python}, but current interpreter is {actual_python}"
+            "Control plane requires Python "
+            f"{_python_range_text(minimum_python)}, but current interpreter is {actual_python}"
         )
 
     venv_relative = Path(_runtime_policy_value(runtime_policy, "required_venv_path", ".venv"))
@@ -56,7 +76,7 @@ def ensure_repo_runtime(project_root: Path, runtime_policy: Mapping[str, Any]) -
         raise RuntimeEnvironmentError(f"Missing environment bootstrap script: {env_bootstrap}")
 
     return {
-        "expected_python_version": expected_python,
+        "expected_python_version": _python_range_text(minimum_python),
         "python_executable": str(executable),
         "required_venv_path": str(expected_venv),
         "env_bootstrap_script": str(env_bootstrap),

@@ -9,13 +9,14 @@ import math
 import os
 import signal
 from statistics import NormalDist
+import sys
 import tempfile
 import time
 import warnings
 from collections import defaultdict
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Mapping, Optional, Protocol, Sequence, Tuple, cast
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Mapping, Optional, Protocol, Sequence, Tuple, cast
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -63,6 +64,25 @@ warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=pd.errors.PerformanceWarning)
 
+SUPPORTED_PYTHON_MIN = (3, 12, 10)
+SUPPORTED_PYTHON_MAX_EXCLUSIVE = (3, 13, 0)
+OPTUNA_MAX_WALL_CLOCK_SECONDS = 20 * 60
+
+
+def _require_supported_python_version(version_info: Optional[Tuple[int, int, int]] = None) -> None:
+    current = tuple(version_info or tuple(sys.version_info[:3]))
+    if current < SUPPORTED_PYTHON_MIN or current >= SUPPORTED_PYTHON_MAX_EXCLUSIVE:
+        current_text = ".".join(str(part) for part in current)
+        min_text = ".".join(str(part) for part in SUPPORTED_PYTHON_MIN)
+        max_text = ".".join(str(part) for part in SUPPORTED_PYTHON_MAX_EXCLUSIVE[:2])
+        raise SystemExit(
+            "Unsupported Python interpreter for this repository: "
+            f"{current_text}. Use >={min_text},<{max_text} from the workspace virtual environment."
+        )
+
+
+_require_supported_python_version()
+
 # ============================================================
 # CONFIGURATION
 # ============================================================
@@ -83,13 +103,10 @@ class PipelineConfig:
     headroom_adv_participation: float = 0.015
     max_clipped_or_skipped_order_fraction: float = 0.05
     max_capacity_drag_fraction_live: float = 0.10
-    max_capacity_drag_fraction_allocation: float = 0.10
     # Label geometry
-    atr_length: int = 14
     stop_atr_multiple: float = 1.0
     target_atr_multiple: float = 2.0
     max_horizon_bars: int = 105
-    long_only_primary_book: bool = True
     # Walk-forward / CV
     outer_train_months: int = 36  # Initial training span (months). Outer folds use an expanding window, not rolling.
     outer_test_months: int = 6
@@ -111,7 +128,7 @@ class PipelineConfig:
     threshold_wrc_min_nonzero_days: int = 20
     threshold_wrc_min_trades: int = 20
     threshold_wrc_min_avg_active_exposure: float = 0.10
-    empirical_prob_map_min_rows: int = 200
+    empirical_prob_map_min_rows: int = 300
     empirical_prob_map_min_bucket_rows: int = 30
     empirical_prob_map_buckets: int = 10
     empirical_prob_map_min_top_bucket_positive_fraction: float = 0.60
@@ -153,7 +170,6 @@ class PipelineConfig:
     n_jobs_tree_models: int = -1
     n_jobs_xgb: int = 8
     deterministic_mode: bool = False
-    cache_enabled: bool = False
     # Seed robustness
     seed_mode: str = "single"  # "single" | "research" | "final"
     seed_list_research: Tuple[int, ...] = (11, 23, 42, 57, 73)
@@ -186,6 +202,127 @@ SEARCH_FAMILY_DEFINITION_VERSION = "threshold_policy_family_v1"
 THRESHOLD_SEARCH_CORRECTED = True
 FULL_PIPELINE_CORRECTED = False
 TRIAL_SCOPE_FORMAL = "threshold_policy_search_only"
+FEATURE_VALIDATION_ROW_COLUMNS: Tuple[str, ...] = (
+    "fold",
+    "feature",
+    "family",
+    "expected_sign",
+    "panel_asset_count",
+    "min_assets_per_day",
+    "n_ic_days",
+    "ic_mean",
+    "ic_tstat_hac",
+    "positive_fold",
+    "regime_positive_count",
+    "regime_days_covered",
+    "monotonic_top_minus_bottom_mean",
+    "monotonic_top_minus_bottom_tstat",
+    "adjacent_bucket_ordering_fraction",
+    "incremental_lift_after_costs",
+    "feature_validation_status",
+    "feature_validation_pass",
+    "feature_validation_preferred",
+)
+FEATURE_VALIDATION_DAILY_COLUMNS: Tuple[str, ...] = (
+    "timestamp_utc",
+    "n_assets",
+    "spearman_ic",
+    "feature",
+    "fold",
+    "family",
+)
+FEATURE_VALIDATION_REPORT_COLUMNS: Tuple[str, ...] = (
+    "feature",
+    "family",
+    "expected_sign",
+    "folds_seen",
+    "sufficient_folds",
+    "positive_fold_fraction",
+    "regime_positive_fold_fraction",
+    "monotonic_pass_fraction",
+    "incremental_lift_positive_fraction",
+    "mean_fold_ic",
+    "mean_fold_ic_tstat",
+    "mean_top_minus_bottom",
+    "mean_incremental_lift_after_costs",
+    "pooled_ic_mean",
+    "pooled_ic_tstat_hac",
+    "total_ic_days",
+    "english_name",
+    "economic_thesis",
+    "formula",
+    "timestamping_rule",
+    "expected_decay_horizon",
+    "feature_validation_pass",
+    "feature_validation_preferred",
+)
+MODEL_COMPARISON_ROW_COLUMNS: Tuple[str, ...] = (
+    "fold",
+    "model_name",
+    "max_concurrent",
+    "fold_selected",
+    "fold_skip_reason",
+    "wrc_status",
+    "wrc_pvalue",
+    "adjusted_oos_sharpe",
+    "net_oos_spread_after_costs",
+    "profit_factor",
+    "max_drawdown",
+    "calmar",
+    "turnover_notional_to_equity",
+    "capacity_drag_fraction_of_gross_alpha",
+    "n_trades",
+    "n_daily_observations",
+    "schema_version",
+    "robustness_method_version",
+    "search_family_definition_version",
+)
+MODEL_COMPARISON_REPORT_COLUMNS: Tuple[str, ...] = (
+    "model_name",
+    "folds_seen",
+    "selected_fold_fraction",
+    "mean_adjusted_oos_sharpe",
+    "mean_net_oos_spread_after_costs",
+    "mean_profit_factor",
+    "mean_calmar",
+    "mean_max_drawdown",
+    "mean_turnover_notional_to_equity",
+    "mean_capacity_drag_fraction_of_gross_alpha",
+    "total_trades",
+    "primary_metric_improvement_vs_best_baseline",
+    "materially_lower_drawdown_turnover_capacity_drag",
+    "model_comparison_pass",
+    "schema_version",
+    "robustness_method_version",
+    "search_family_definition_version",
+    "threshold_search_corrected",
+    "full_pipeline_corrected",
+    "trial_scope_formal",
+    "trial_count_formal",
+)
+POSITION_RANKING_AUDIT_COLUMNS: Tuple[str, ...] = (
+    "fold",
+    "timestamp_utc",
+    "ticker",
+    "decision",
+    "max_concurrent",
+    "p_cal",
+    "p_empirical",
+    "ev_empirical_r",
+    "cost_est_r",
+    "signal_dollar_volume",
+    "signal_adv_dollar_20",
+)
+
+
+def ensure_columns(df: pd.DataFrame, columns: Sequence[str]) -> pd.DataFrame:
+    work = df.copy()
+    for column in columns:
+        if column not in work.columns:
+            work[column] = pd.Series(dtype="object")
+    ordered = [column for column in columns if column in work.columns]
+    extras = [column for column in work.columns if column not in ordered]
+    return work[ordered + extras]
 SCORECARD_LABEL = "scorecard_default_thresholds_v1"
 SCORECARD_ARCHETYPE = "concentrated_multi_day_strategy_max8"
 IMPLEMENTATION_STATUS_VALUES: Tuple[str, ...] = (
@@ -295,6 +432,11 @@ REGISTRY_FIELDS: Tuple[str, ...] = (
     "subfamily",
     "regular_or_physics",
     "lookback",
+    "formula",
+    "timestamping_rule",
+    "economic_thesis",
+    "expected_sign",
+    "expected_decay_horizon",
     "parameters",
     "formula_group",
     "default_enabled",
@@ -521,6 +663,366 @@ def spearman_ic_by_timestamp(
         "ic_ir": float(mean_ic / std_ic) if std_ic and pd.notna(std_ic) and std_ic != 0 else math.nan,
         "positive_ic_hit_rate": float((ic_ts["spearman_ic"] > 0).mean()),
     }
+
+
+def winsorize_series(series: pd.Series, lower_q: float = 0.005, upper_q: float = 0.995) -> pd.Series:
+    values = pd.Series(series, dtype=float).replace([np.inf, -np.inf], np.nan)
+    clean = values.dropna()
+    if len(clean) < 3:
+        return values
+    lower = float(clean.quantile(lower_q))
+    upper = float(clean.quantile(upper_q))
+    return values.clip(lower=lower, upper=upper)
+
+
+def hac_mean_tstat(values: Sequence[float]) -> float:
+    series = pd.Series(list(values), dtype=float).replace([np.inf, -np.inf], np.nan).dropna()
+    if len(series) < 2:
+        return math.nan
+    mean_value = float(series.mean())
+    centered = series - mean_value
+    lag = min(5, int(math.floor(len(series) ** 0.25)))
+    vals = centered.to_numpy()
+    gamma0 = float(np.mean(vals * vals))
+    long_run_var = gamma0
+    for idx in range(1, lag + 1):
+        cov = float(np.mean(vals[idx:] * vals[:-idx]))
+        weight = 1.0 - idx / (lag + 1.0)
+        long_run_var += 2.0 * weight * cov
+    if long_run_var <= 0:
+        return math.nan
+    se = math.sqrt(long_run_var / len(series))
+    if se <= 0:
+        return math.nan
+    return float(mean_value / se)
+
+
+def _pct_rank_by_timestamp(values: pd.Series, timestamps: pd.Series) -> pd.Series:
+    tmp = pd.DataFrame({"value": values.astype(float), "timestamp_utc": pd.to_datetime(timestamps, utc=True)})
+    ranked = tmp.groupby("timestamp_utc")["value"].rank(method="average", pct=True)
+    return ranked.astype(float)
+
+
+def _cross_section_bucket_metrics(
+    frame: pd.DataFrame,
+    *,
+    score_col: str,
+    outcome_col: str,
+    timestamp_col: str,
+    min_assets: int,
+    buckets: int,
+) -> pd.DataFrame:
+    rows: List[Dict[str, Any]] = []
+    work = frame[[score_col, outcome_col, timestamp_col]].copy()
+    work = work.replace([np.inf, -np.inf], np.nan).dropna()
+    if work.empty:
+        return pd.DataFrame()
+    work[timestamp_col] = pd.to_datetime(work[timestamp_col], utc=True)
+    for ts, group in work.groupby(timestamp_col, sort=True):
+        if len(group) < min_assets:
+            continue
+        pct_rank = group[score_col].rank(method="average", pct=True)
+        bucket = np.ceil(pct_rank * buckets).clip(1, buckets).astype(int)
+        grouped = group.assign(bucket=bucket).groupby("bucket")[outcome_col].mean().reindex(range(1, buckets + 1))
+        if grouped.notna().sum() < max(3, buckets // 2):
+            continue
+        top = grouped.iloc[-1]
+        bottom = grouped.iloc[0]
+        top_minus_bottom = float(top - bottom) if pd.notna(top) and pd.notna(bottom) else math.nan
+        valid = grouped.dropna().to_numpy(dtype=float)
+        if len(valid) >= 2:
+            adjacent_fraction = float((np.diff(valid) >= -1e-12).mean())
+        else:
+            adjacent_fraction = math.nan
+        top_bucket_incremental_lift = float(top - group[outcome_col].mean()) if pd.notna(top) else math.nan
+        rows.append(
+            {
+                timestamp_col: ts,
+                "bucket_count": int(grouped.notna().sum()),
+                "top_minus_bottom": top_minus_bottom,
+                "adjacent_ordering_fraction": adjacent_fraction,
+                "top_bucket_incremental_lift": top_bucket_incremental_lift,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def _expected_sign_multiplier(expected_sign: object) -> int:
+    value = str(expected_sign or "mixed").strip().lower()
+    if value.startswith("neg"):
+        return -1
+    return 1
+
+
+def _empty_feature_validation_row(
+    *,
+    fold_name: str,
+    feature_name: str,
+    meta: Mapping[str, Any],
+    expected_sign: str,
+    panel_asset_count: int,
+    min_assets_per_day: int,
+) -> Dict[str, Any]:
+    return {
+        "fold": fold_name,
+        "feature": feature_name,
+        "family": meta.get("family", "unknown"),
+        "expected_sign": expected_sign,
+        "panel_asset_count": panel_asset_count,
+        "min_assets_per_day": min_assets_per_day,
+        "n_ic_days": 0,
+        "ic_mean": math.nan,
+        "ic_tstat_hac": math.nan,
+        "positive_fold": 0,
+        "regime_positive_count": 0,
+        "regime_days_covered": 0,
+        "monotonic_top_minus_bottom_mean": math.nan,
+        "monotonic_top_minus_bottom_tstat": math.nan,
+        "adjacent_bucket_ordering_fraction": math.nan,
+        "incremental_lift_after_costs": math.nan,
+        "feature_validation_status": "insufficient_data",
+        "feature_validation_pass": 0,
+        "feature_validation_preferred": 0,
+    }
+
+
+def feature_validation_for_fold(
+    scored_df: pd.DataFrame,
+    feature_registry_df: pd.DataFrame,
+    fold_name: str,
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    registry_lookup = (
+        feature_registry_df.set_index("feature_name").to_dict("index")
+        if len(feature_registry_df)
+        else {}
+    )
+    panel_asset_count = int(scored_df["ticker"].nunique()) if "ticker" in scored_df.columns else 0
+    min_assets_per_day = max(2, min(20, int(math.ceil(max(panel_asset_count, 1) * 0.70))))
+    timestamp_col = "timestamp_utc"
+    rows: List[Dict[str, Any]] = []
+    daily_rows: List[Dict[str, Any]] = []
+    if len(scored_df) == 0:
+        return rows, daily_rows
+    if "forward_label_return_net" not in scored_df.columns or timestamp_col not in scored_df.columns:
+        for feature_name in feature_registry_df["feature_name"].tolist():
+            meta = registry_lookup.get(feature_name, {})
+            expected_sign = str(meta.get("expected_sign", "mixed"))
+            rows.append(
+                _empty_feature_validation_row(
+                    fold_name=fold_name,
+                    feature_name=feature_name,
+                    meta=meta,
+                    expected_sign=expected_sign,
+                    panel_asset_count=panel_asset_count,
+                    min_assets_per_day=min_assets_per_day,
+                )
+            )
+        return rows, daily_rows
+    session_dates = pd.to_datetime(scored_df[timestamp_col], utc=True).dt.tz_convert("America/New_York").dt.date
+    for feature_name in feature_registry_df["feature_name"].tolist():
+        if feature_name not in scored_df.columns:
+            continue
+        meta = registry_lookup.get(feature_name, {})
+        expected_sign = str(meta.get("expected_sign", "mixed"))
+        direction = _expected_sign_multiplier(expected_sign)
+        work = scored_df[[feature_name, "forward_label_return_net", timestamp_col]].copy()
+        work[timestamp_col] = pd.to_datetime(work[timestamp_col], utc=True)
+        work["feature_value"] = winsorize_series(work[feature_name].astype(float)) * direction
+        work["forward_label_return_net"] = pd.Series(work["forward_label_return_net"], dtype=float)
+        work["regime_label"] = infer_regime_label(scored_df).reindex(work.index)
+        work["session_date_ny"] = session_dates.astype(str).values
+        work = work.replace([np.inf, -np.inf], np.nan).dropna(subset=["feature_value", "forward_label_return_net", timestamp_col])
+        if work.empty:
+            rows.append(
+                _empty_feature_validation_row(
+                    fold_name=fold_name,
+                    feature_name=feature_name,
+                    meta=meta,
+                    expected_sign=expected_sign,
+                    panel_asset_count=panel_asset_count,
+                    min_assets_per_day=min_assets_per_day,
+                )
+            )
+            continue
+        ic_ts, ic_summary = spearman_ic_by_timestamp(
+            work.rename(columns={"feature_value": "score"}),
+            score_col="score",
+            outcome_col="forward_label_return_net",
+            timestamp_col=timestamp_col,
+            min_n=min_assets_per_day,
+        )
+        ic_tstat = hac_mean_tstat(ic_ts["spearman_ic"].tolist()) if len(ic_ts) else math.nan
+        bucket_df = _cross_section_bucket_metrics(
+            work,
+            score_col="feature_value",
+            outcome_col="forward_label_return_net",
+            timestamp_col=timestamp_col,
+            min_assets=min_assets_per_day,
+            buckets=10,
+        )
+        top_bottom_mean = float(bucket_df["top_minus_bottom"].mean()) if len(bucket_df) else math.nan
+        top_bottom_tstat = hac_mean_tstat(bucket_df["top_minus_bottom"].tolist()) if len(bucket_df) else math.nan
+        adjacent_fraction = float(bucket_df["adjacent_ordering_fraction"].mean()) if len(bucket_df) else math.nan
+        incremental_lift = float(bucket_df["top_bucket_incremental_lift"].mean()) if len(bucket_df) else math.nan
+        regime_positive_count = 0
+        regime_days_covered = 0
+        for regime_name, regime_group in work.groupby("regime_label", sort=True):
+            if str(regime_name) == "unknown":
+                continue
+            n_regime_days = int(pd.Series(regime_group["session_date_ny"]).nunique())
+            if n_regime_days < 40:
+                continue
+            regime_days_covered += n_regime_days
+            _, regime_ic_summary = spearman_ic_by_timestamp(
+                regime_group.rename(columns={"feature_value": "score"}),
+                score_col="score",
+                outcome_col="forward_label_return_net",
+                timestamp_col=timestamp_col,
+                min_n=min_assets_per_day,
+            )
+            if float(regime_ic_summary.get("mean_ic", math.nan)) > 0:
+                regime_positive_count += 1
+        sufficient = int(ic_summary.get("n_timestamps", 0)) >= 60
+        monotonic_pass = (
+            np.isfinite(top_bottom_mean)
+            and top_bottom_mean > 0
+            and np.isfinite(top_bottom_tstat)
+            and top_bottom_tstat >= 2.0
+            and np.isfinite(adjacent_fraction)
+            and adjacent_fraction >= 0.70
+        )
+        validation_pass = bool(
+            sufficient
+            and np.isfinite(ic_tstat)
+            and ic_tstat >= 2.0
+            and float(ic_summary.get("mean_ic", math.nan)) > 0
+            and regime_positive_count >= 2
+            and monotonic_pass
+            and np.isfinite(incremental_lift)
+            and incremental_lift > 0
+        )
+        preferred_pass = bool(validation_pass and ic_tstat >= 3.0)
+        rows.append(
+            {
+                "fold": fold_name,
+                "feature": feature_name,
+                "family": meta.get("family", "unknown"),
+                "expected_sign": expected_sign,
+                "panel_asset_count": panel_asset_count,
+                "min_assets_per_day": min_assets_per_day,
+                "n_ic_days": int(ic_summary.get("n_timestamps", 0)),
+                "ic_mean": float(ic_summary.get("mean_ic", math.nan)),
+                "ic_tstat_hac": float(ic_tstat) if np.isfinite(ic_tstat) else math.nan,
+                "positive_fold": int(float(ic_summary.get("mean_ic", math.nan)) > 0),
+                "regime_positive_count": int(regime_positive_count),
+                "regime_days_covered": int(regime_days_covered),
+                "monotonic_top_minus_bottom_mean": top_bottom_mean,
+                "monotonic_top_minus_bottom_tstat": float(top_bottom_tstat) if np.isfinite(top_bottom_tstat) else math.nan,
+                "adjacent_bucket_ordering_fraction": adjacent_fraction,
+                "incremental_lift_after_costs": incremental_lift,
+                "feature_validation_status": "ok" if sufficient else "insufficient_data",
+                "feature_validation_pass": int(validation_pass),
+                "feature_validation_preferred": int(preferred_pass),
+            }
+        )
+        if len(ic_ts):
+            ic_daily = ic_ts.copy()
+            ic_daily["fold"] = fold_name
+            ic_daily["feature"] = feature_name
+            ic_daily["family"] = meta.get("family", "unknown")
+            daily_rows.extend(ic_daily.to_dict("records"))
+    return rows, daily_rows
+
+
+def build_feature_validation_report(
+    feature_validation_rows: pd.DataFrame,
+    feature_validation_daily: pd.DataFrame,
+    feature_registry_df: pd.DataFrame,
+) -> pd.DataFrame:
+    if feature_validation_rows.empty:
+        return pd.DataFrame(columns=FEATURE_VALIDATION_REPORT_COLUMNS)
+    rows = feature_validation_rows.copy()
+    for column in (
+        "family",
+        "expected_sign",
+        "feature_validation_status",
+        "positive_fold",
+        "regime_positive_count",
+        "monotonic_top_minus_bottom_tstat",
+        "monotonic_top_minus_bottom_mean",
+        "incremental_lift_after_costs",
+        "ic_mean",
+        "ic_tstat_hac",
+    ):
+        if column not in rows.columns:
+            rows[column] = np.nan
+    report = (
+        rows.groupby("feature", as_index=False)
+        .agg(
+            family=("family", "first"),
+            expected_sign=("expected_sign", "first"),
+            folds_seen=("fold", "nunique"),
+            sufficient_folds=("feature_validation_status", lambda s: int((pd.Series(s).astype(str) == "ok").sum())),
+            positive_fold_fraction=("positive_fold", "mean"),
+            regime_positive_fold_fraction=("regime_positive_count", lambda s: float((pd.Series(s).astype(float) >= 2).mean())),
+            monotonic_pass_fraction=("monotonic_top_minus_bottom_tstat", lambda s: float((pd.Series(s).astype(float) >= 2.0).mean())),
+            incremental_lift_positive_fraction=("incremental_lift_after_costs", lambda s: float((pd.Series(s).astype(float) > 0).mean())),
+            mean_fold_ic=("ic_mean", "mean"),
+            mean_fold_ic_tstat=("ic_tstat_hac", "mean"),
+            mean_top_minus_bottom=("monotonic_top_minus_bottom_mean", "mean"),
+            mean_incremental_lift_after_costs=("incremental_lift_after_costs", "mean"),
+        )
+    )
+    if not feature_validation_daily.empty:
+        pooled_rows: List[Dict[str, Any]] = []
+        for feature_name, group in feature_validation_daily.groupby("feature", sort=True):
+            pooled_rows.append(
+                {
+                    "feature": feature_name,
+                    "pooled_ic_mean": float(group["spearman_ic"].mean()),
+                    "pooled_ic_tstat_hac": float(hac_mean_tstat(group["spearman_ic"].tolist())),
+                    "total_ic_days": int(len(group)),
+                }
+            )
+        report = report.merge(pd.DataFrame(pooled_rows), on="feature", how="left")
+    else:
+        report["pooled_ic_mean"] = math.nan
+        report["pooled_ic_tstat_hac"] = math.nan
+        report["total_ic_days"] = 0
+    report = report.merge(
+        feature_registry_df[
+            [
+                "feature_name",
+                "english_name",
+                "economic_thesis",
+                "formula",
+                "timestamping_rule",
+                "expected_decay_horizon",
+            ]
+        ],
+        left_on="feature",
+        right_on="feature_name",
+        how="left",
+    ).drop(columns=["feature_name"])
+    report["feature_validation_pass"] = (
+        (report["pooled_ic_tstat_hac"] >= 2.0)
+        & (report["positive_fold_fraction"] >= 0.60)
+        & (report["regime_positive_fold_fraction"] >= 0.60)
+        & (report["monotonic_pass_fraction"] >= 0.60)
+        & (report["incremental_lift_positive_fraction"] >= 0.60)
+    ).astype(int)
+    report["feature_validation_preferred"] = (
+        (report["pooled_ic_tstat_hac"] >= 3.0)
+        & (report["positive_fold_fraction"] >= 0.70)
+        & (report["feature_validation_pass"] == 1)
+    ).astype(int)
+    report["schema_version"] = SCHEMA_VERSION
+    report["robustness_method_version"] = ROBUSTNESS_METHOD_VERSION
+    report["search_family_definition_version"] = SEARCH_FAMILY_DEFINITION_VERSION
+    return report.sort_values(
+        ["feature_validation_pass", "feature_validation_preferred", "pooled_ic_tstat_hac", "mean_fold_ic"],
+        ascending=[False, False, False, False],
+    ).reset_index(drop=True)
 
 
 def setup_logging(paths: OutputPaths, resume: bool = False) -> None:
@@ -782,6 +1284,14 @@ def build_stitched_policy_daily_frame(
     *,
     starting_capital: float,
 ) -> pd.DataFrame:
+    def _join_unique_strings(values: pd.Series) -> str:
+        unique = [str(v) for v in pd.Series(values).dropna().astype(str).tolist() if str(v)]
+        ordered: List[str] = []
+        for value in unique:
+            if value not in ordered:
+                ordered.append(value)
+        return "|".join(ordered)
+
     if len(policy_daily_df) == 0:
         return pd.DataFrame(
             columns=[
@@ -797,15 +1307,47 @@ def build_stitched_policy_daily_frame(
                 "max_concurrent",
                 "fold_selected",
                 "fold_skip_reason",
+                "schema_version",
+                "robustness_method_version",
+                "search_family_definition_version",
+                "implementation_status",
+                "verification_stage_reached",
+                "threshold_search_corrected",
+                "full_pipeline_corrected",
+                "trial_scope_formal",
+                "trial_count_formal",
             ]
         )
     daily = policy_daily_df.copy()
     daily["session_date_ny"] = pd.to_datetime(daily["session_date_ny"]).dt.strftime("%Y-%m-%d")
-    duplicate_dates = daily["session_date_ny"][daily["session_date_ny"].duplicated()].tolist()
-    if duplicate_dates:
-        sample = ", ".join(sorted(set(duplicate_dates[:5])))
-        raise RuntimeError(f"Stitched policy daily series has overlapping session dates: {sample}")
-    daily = daily.sort_values("session_date_ny").reset_index(drop=True)
+    if "timestamp_utc" in daily.columns:
+        daily["timestamp_utc"] = pd.to_datetime(daily["timestamp_utc"], utc=True, errors="coerce")
+    sort_columns = ["session_date_ny"] + (["timestamp_utc"] if "timestamp_utc" in daily.columns else [])
+    daily = daily.sort_values(sort_columns).reset_index(drop=True)
+    if daily["session_date_ny"].duplicated().any():
+        logging.info("Collapsing duplicate stitched session dates at fold boundaries into calendar-day returns.")
+        agg_spec: Dict[str, Any] = {
+            "daily_return": lambda s: float(np.prod(1.0 + pd.Series(s, dtype=float).fillna(0.0)) - 1.0),
+            "active_positions_mean": "mean",
+            "active_positions_p95": "max",
+            "active_positions_max": "max",
+            "active_exposure_mean": "mean",
+            "fold": _join_unique_strings,
+            "max_concurrent": "max",
+            "fold_selected": "max",
+            "fold_skip_reason": _join_unique_strings,
+            "schema_version": "first",
+            "robustness_method_version": "first",
+            "search_family_definition_version": "first",
+            "implementation_status": "first",
+            "verification_stage_reached": "first",
+            "threshold_search_corrected": "first",
+            "full_pipeline_corrected": "first",
+            "trial_scope_formal": "first",
+            "trial_count_formal": "first",
+        }
+        available_agg = {column: spec for column, spec in agg_spec.items() if column in daily.columns}
+        daily = daily.groupby("session_date_ny", as_index=False).agg(available_agg)
     returns = (
         daily["daily_return"].astype(float)
         .replace([np.inf, -np.inf], np.nan)
@@ -1047,19 +1589,46 @@ def evaluate_scorecard_defaults(
     }
 
 
-def derive_implementation_status(
+def _stage_implied_status(stage: str, *, deterministic_mode: bool) -> str:
+    stage_text = str(stage or "code_present")
+    if stage_text == "canonical_rerun_match":
+        return "reproducible_verified" if deterministic_mode else "unit_tested"
+    if stage_text.startswith("smoke_tier_"):
+        try:
+            tier = int(stage_text.rsplit("_", 1)[-1])
+        except ValueError:
+            tier = 0
+        return "smoke_validated" if tier >= 2 else "unit_tested"
+    if stage_text == "unit_tests":
+        return "unit_tested"
+    return "present"
+
+
+def _default_stage_for_status(status: str) -> str:
+    if status == "reproducible_verified":
+        return "canonical_rerun_match"
+    if status == "smoke_validated":
+        return "smoke_tier_2"
+    if status == "unit_tested":
+        return "unit_tests"
+    return "code_present"
+
+
+def normalize_implementation_claim(
+    requested_status: str,
+    requested_stage: str,
     *,
-    tests_passed: bool,
-    smoke_tier_passed: int,
-    reproducibility_verified: bool,
+    deterministic_mode: bool,
 ) -> Tuple[str, str]:
-    if reproducibility_verified:
-        return "reproducible_verified", "canonical_rerun_match"
-    if smoke_tier_passed >= 2:
-        return "smoke_validated", f"smoke_tier_{smoke_tier_passed}"
-    if tests_passed:
-        return "unit_tested", "unit_tests"
-    return "present", "code_present"
+    status = requested_status if requested_status in IMPLEMENTATION_STATUS_VALUES else "present"
+    stage = str(requested_stage or "code_present")
+    implied_status = _stage_implied_status(stage, deterministic_mode=deterministic_mode)
+    if verification_rank(status) > verification_rank(implied_status):
+        status = implied_status
+        stage = _default_stage_for_status(status)
+    elif verification_rank(_stage_implied_status(stage, deterministic_mode=deterministic_mode)) > verification_rank(status):
+        stage = _default_stage_for_status(status)
+    return status, stage
 
 
 def moving_block_bootstrap_white_reality_check(
@@ -1103,26 +1672,131 @@ def infer_regime_label(frame: pd.DataFrame) -> pd.Series:
     return pd.Series(regime, index=frame.index)
 
 
+def _serialize_bucket_positive_rates(values: Sequence[float]) -> str:
+    serialized: List[Optional[float]] = []
+    for value in values:
+        numeric = float(value)
+        serialized.append(numeric if np.isfinite(numeric) else None)
+    return json.dumps(serialized)
+
+
+def _deserialize_bucket_positive_rates(raw: object) -> Optional[List[float]]:
+    if raw is None:
+        return None
+    if isinstance(raw, float) and np.isnan(raw):
+        return None
+    parsed: object = raw
+    if isinstance(raw, str):
+        text = raw.strip()
+        if not text:
+            return None
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            return None
+    if not isinstance(parsed, list):
+        return None
+    values: List[float] = []
+    for item in parsed:
+        if item is None or item == "":
+            values.append(np.nan)
+            continue
+        try:
+            values.append(float(item))
+        except (TypeError, ValueError):
+            return None
+    return values or None
+
+
+def _aligned_spearman(left: Sequence[float], right: Sequence[float]) -> float:
+    if len(left) != len(right):
+        return np.nan
+    left_series = pd.Series(left, dtype=float)
+    right_series = pd.Series(right, dtype=float)
+    valid = left_series.notna() & right_series.notna()
+    if int(valid.sum()) < 2:
+        return np.nan
+    corr = left_series.loc[valid].corr(right_series.loc[valid], method="spearman")
+    return float(corr) if corr is not None and np.isfinite(corr) else np.nan
+
+
 def apply_empirical_probability_map(
     reference_scored: pd.DataFrame,
     target_scored: pd.DataFrame,
     config: PipelineConfig,
+    *,
+    previous_bucket_positive_rates: Optional[Sequence[float]] = None,
 ) -> Tuple[pd.DataFrame, pd.DataFrame, Dict[str, Any]]:
     reward_r = config.target_atr_multiple / max(config.stop_atr_multiple, 1e-12)
     ref = reference_scored.copy()
     tgt = target_scored.copy()
     meta: Dict[str, Any] = {
-        "empirical_prob_map_status": "identity_fallback",
+        "empirical_prob_map_status": "deterministic_simple_rank_fallback",
         "empirical_prob_map_support_rows": 0,
         "empirical_prob_map_unique_scores": 0,
+        "ranking_map_fit_samples": 0,
+        "ranking_map_bucket_samples": "",
+        "ranking_map_bucket_positive_rates": "[]",
+        "ranking_map_adjacent_fold_spearman": np.nan,
+        "ranking_map_adjacent_fold_spearman_evaluable": False,
+        "ranking_map_fallback_usage_fraction": 1.0,
+        "ranking_map_stability_pass": False,
+        "ranking_map_top_2_buckets_positive_fraction": np.nan,
+        "ranking_map_max_fallback_usage_fraction_allowed": float(config.empirical_prob_map_max_fallback_usage_fraction),
+        "ranking_map_min_adjacent_fold_spearman_allowed": float(config.empirical_prob_map_min_adjacent_fold_spearman),
+        "ranking_map_guardrails_pass": False,
+        "ranking_map_guardrail_failure_reasons": "",
     }
     valid = ref[["p_cal", "long_win"]].replace([np.inf, -np.inf], np.nan).dropna()
     meta["empirical_prob_map_support_rows"] = int(len(valid))
     meta["empirical_prob_map_unique_scores"] = int(valid["p_cal"].nunique()) if len(valid) else 0
+    meta["ranking_map_fit_samples"] = int(len(valid))
+
+    def _simple_rank_predict(values: pd.Series) -> np.ndarray:
+        if len(valid) == 0:
+            return clip_prob(pd.Series(values).astype(float).replace([np.inf, -np.inf], np.nan).fillna(0.5).to_numpy())
+        fit_scores = np.sort(valid["p_cal"].astype(float).to_numpy())
+        raw = pd.Series(values).astype(float).replace([np.inf, -np.inf], np.nan).fillna(0.5).to_numpy()
+        probs = np.searchsorted(fit_scores, raw, side="right") / max(len(fit_scores), 1)
+        return clip_prob(np.asarray(probs, dtype=float))
+
+    bucket_samples: List[int] = []
+    bucket_positive_rates: List[float] = []
+    top_two_positive_fraction = np.nan
+    if len(valid) >= max(config.empirical_prob_map_buckets, 1):
+        pct_rank = valid["p_cal"].rank(method="average", pct=True)
+        valid_bucket = np.ceil(pct_rank * config.empirical_prob_map_buckets).clip(1, config.empirical_prob_map_buckets).astype(int)
+        bucket_summary = (
+            valid.assign(bucket=valid_bucket)
+            .groupby("bucket")
+            .agg(samples=("long_win", "size"), positive_rate=("long_win", "mean"))
+            .reindex(range(1, config.empirical_prob_map_buckets + 1))
+        )
+        bucket_samples = bucket_summary["samples"].fillna(0).astype(int).tolist()
+        bucket_positive_rates = [
+            float(value) if pd.notna(value) else np.nan
+            for value in bucket_summary["positive_rate"].tolist()
+        ]
+        top_two = bucket_summary["positive_rate"].dropna().tail(2)
+        if len(top_two):
+            top_two_positive_fraction = float((top_two > 0.5).mean())
+    meta["ranking_map_bucket_samples"] = json.dumps(bucket_samples)
+    meta["ranking_map_bucket_positive_rates"] = _serialize_bucket_positive_rates(bucket_positive_rates)
+    meta["ranking_map_top_2_buckets_positive_fraction"] = top_two_positive_fraction
+    adjacent_fold_spearman = np.nan
+    if previous_bucket_positive_rates is not None and bucket_positive_rates:
+        adjacent_fold_spearman = _aligned_spearman(previous_bucket_positive_rates, bucket_positive_rates)
+    meta["ranking_map_adjacent_fold_spearman"] = adjacent_fold_spearman
+    meta["ranking_map_adjacent_fold_spearman_evaluable"] = bool(np.isfinite(adjacent_fold_spearman))
+    enough_bucket_support = bool(bucket_samples) and all(sample >= config.empirical_prob_map_min_bucket_rows for sample in bucket_samples if sample > 0)
+
     if (
         len(valid) >= config.empirical_prob_map_min_rows
         and valid["long_win"].nunique() >= 2
         and valid["p_cal"].nunique() >= 10
+        and enough_bucket_support
+        and np.isfinite(top_two_positive_fraction)
+        and top_two_positive_fraction >= config.empirical_prob_map_min_top_bucket_positive_fraction
     ):
         iso = IsotonicRegression(y_min=0.0, y_max=1.0, out_of_bounds="clip")
         iso.fit(valid["p_cal"].astype(float), valid["long_win"].astype(float))
@@ -1132,9 +1806,22 @@ def apply_empirical_probability_map(
             return clip_prob(np.asarray(iso.predict(clipped), dtype=float))
 
         meta["empirical_prob_map_status"] = "isotonic"
+        meta["ranking_map_fallback_usage_fraction"] = 0.0
     else:
-        def _predict_prob(values: pd.Series) -> np.ndarray:
-            return clip_prob(pd.Series(values).astype(float).replace([np.inf, -np.inf], np.nan).fillna(0.5).to_numpy())
+        _predict_prob = _simple_rank_predict
+
+    guardrail_failures: List[str] = []
+    if float(meta["ranking_map_fallback_usage_fraction"]) > float(meta["ranking_map_max_fallback_usage_fraction_allowed"]) + 1e-12:
+        guardrail_failures.append("fallback_usage_fraction_exceeds_max")
+    if bool(meta["ranking_map_adjacent_fold_spearman_evaluable"]):
+        observed_spearman = float(meta["ranking_map_adjacent_fold_spearman"])
+        if observed_spearman + 1e-12 < float(meta["ranking_map_min_adjacent_fold_spearman_allowed"]):
+            guardrail_failures.append("adjacent_fold_spearman_below_min")
+    meta["ranking_map_guardrails_pass"] = len(guardrail_failures) == 0
+    meta["ranking_map_guardrail_failure_reasons"] = "ok" if not guardrail_failures else ";".join(guardrail_failures)
+    meta["ranking_map_stability_pass"] = bool(
+        meta["empirical_prob_map_status"] == "isotonic" and meta["ranking_map_guardrails_pass"]
+    )
 
     for frame in (ref, tgt):
         frame["p_empirical"] = _predict_prob(frame["p_cal"])
@@ -1142,6 +1829,17 @@ def apply_empirical_probability_map(
         frame["entry_regime_label"] = infer_regime_label(frame)
         frame["empirical_prob_map_status"] = str(meta["empirical_prob_map_status"])
         frame["empirical_prob_map_support_rows"] = int(meta["empirical_prob_map_support_rows"])
+        frame["ranking_map_fit_samples"] = int(meta["ranking_map_fit_samples"])
+        frame["ranking_map_bucket_samples"] = str(meta["ranking_map_bucket_samples"])
+        frame["ranking_map_bucket_positive_rates"] = str(meta["ranking_map_bucket_positive_rates"])
+        frame["ranking_map_adjacent_fold_spearman"] = meta["ranking_map_adjacent_fold_spearman"]
+        frame["ranking_map_adjacent_fold_spearman_evaluable"] = bool(meta["ranking_map_adjacent_fold_spearman_evaluable"])
+        frame["ranking_map_fallback_usage_fraction"] = float(meta["ranking_map_fallback_usage_fraction"])
+        frame["ranking_map_max_fallback_usage_fraction_allowed"] = float(meta["ranking_map_max_fallback_usage_fraction_allowed"])
+        frame["ranking_map_min_adjacent_fold_spearman_allowed"] = float(meta["ranking_map_min_adjacent_fold_spearman_allowed"])
+        frame["ranking_map_guardrails_pass"] = bool(meta["ranking_map_guardrails_pass"])
+        frame["ranking_map_guardrail_failure_reasons"] = str(meta["ranking_map_guardrail_failure_reasons"])
+        frame["ranking_map_stability_pass"] = bool(meta["ranking_map_stability_pass"])
     return ref, tgt, meta
 
 
@@ -1169,15 +1867,16 @@ def file_sha256(path: Path) -> str:
 
 
 def build_code_fingerprint() -> str:
+    repo_root = Path(__file__).resolve().parent
     roots = [
-        Path(__file__),
-        Path("docs") / "phase1-research-spec.md",
-        Path("docs") / "phase1-execution-roadmap.md",
+        Path(__file__).resolve(),
+        repo_root / "docs" / "phase1-research-spec.md",
+        repo_root / "docs" / "phase1-execution-roadmap.md",
     ]
     digest = hashlib.sha256()
     for path in roots:
         if not path.exists():
-            continue
+            raise FileNotFoundError(f"Missing fingerprint input: {path}")
         digest.update(str(path.as_posix()).encode("utf-8"))
         digest.update(file_sha256(path).encode("utf-8"))
     return digest.hexdigest()
@@ -1419,8 +2118,13 @@ def build_feature_registry(features: Sequence[str]) -> pd.DataFrame:
         lookback: Optional[int],
         formula_group: str,
         depends_on: Sequence[str],
+        formula: str = "",
+        timestamping_rule: str = "Computed with information available at or before bar close t; aligned to trade at t+1 open.",
+        economic_thesis: str = "",
+        expected_sign: str = "mixed",
+        expected_decay_horizon: str = "",
         default_enabled: bool = True,
-        implementation_status: str = "implemented",
+        implementation_status: str = "present",
         availability_status: str = "available",
         candidate_group_id: str = "",
         orthogonality_cluster_id: str = "",
@@ -1438,6 +2142,11 @@ def build_feature_registry(features: Sequence[str]) -> pd.DataFrame:
                 "subfamily": subfamily,
                 "regular_or_physics": regular_or_physics,
                 "lookback": lookback,
+                "formula": formula or english_name,
+                "timestamping_rule": timestamping_rule,
+                "economic_thesis": economic_thesis or f"{family} signal intended to explain multi-bar forward returns.",
+                "expected_sign": expected_sign,
+                "expected_decay_horizon": expected_decay_horizon or ("multi-day" if lookback is None else f"{lookback} bars"),
                 "parameters": {},  # Reserved for formula params; not yet populated
                 "formula_group": formula_group,
                 "default_enabled": bool(default_enabled),
@@ -1466,6 +2175,9 @@ def build_feature_registry(features: Sequence[str]) -> pd.DataFrame:
             lookback=n,
             formula_group="simple_return_n",
             depends_on=["close"],
+            formula=f"close[t] / close[t-{n}] - 1",
+            economic_thesis="Recent directional persistence can carry into the forward label horizon.",
+            expected_sign="positive",
             default_enabled=True,
         )
 
@@ -1482,6 +2194,9 @@ def build_feature_registry(features: Sequence[str]) -> pd.DataFrame:
             lookback=lookback,
             formula_group=formula_group,
             depends_on=["close"],
+            formula=f"close[t] / close[t-{lookback}] - 1",
+            economic_thesis="Rate-of-change captures intermediate momentum continuation.",
+            expected_sign="positive",
         )
 
     for name, english, lookback in [
@@ -1499,6 +2214,9 @@ def build_feature_registry(features: Sequence[str]) -> pd.DataFrame:
             lookback=lookback,
             formula_group="ema_gap",
             depends_on=["close"],
+            formula=english,
+            economic_thesis="Trend and moving-average displacement can proxy persistent directional pressure.",
+            expected_sign="positive",
         )
 
     _row(
@@ -1510,6 +2228,9 @@ def build_feature_registry(features: Sequence[str]) -> pd.DataFrame:
         lookback=14,
         formula_group="rsi_n",
         depends_on=["close"],
+        formula="Wilder RSI over 14 bars",
+        economic_thesis="Short-horizon momentum exhaustion or persistence may explain multi-bar forward returns.",
+        expected_sign="mixed",
     )
     for name, english in [
         ("stoch_k_14_3", "Stochastic %K 14,3"),
@@ -1524,6 +2245,9 @@ def build_feature_registry(features: Sequence[str]) -> pd.DataFrame:
             lookback=14,
             formula_group="stoch_k_n_s",
             depends_on=["high", "low", "close"],
+            formula=english,
+            economic_thesis="Position within recent range may capture overextension or breakout persistence.",
+            expected_sign="mixed",
         )
 
     for name, english in [
@@ -1540,6 +2264,9 @@ def build_feature_registry(features: Sequence[str]) -> pd.DataFrame:
             lookback=26,
             formula_group="macd_fast_slow_signal",
             depends_on=["close"],
+            formula=english,
+            economic_thesis="Trend acceleration and MACD structure can proxy persistent directional pressure.",
+            expected_sign="positive",
         )
 
     # Volatility / range block (including context ladder).
@@ -1563,6 +2290,9 @@ def build_feature_registry(features: Sequence[str]) -> pd.DataFrame:
             lookback=lookback,
             formula_group=formula_group,
             depends_on=["close"],
+            formula=english,
+            economic_thesis="Volatility and range context can shape forward payoff asymmetry and selectivity.",
+            expected_sign="mixed",
         )
 
     # Volume / flow and cross-sectional context.
@@ -1583,6 +2313,9 @@ def build_feature_registry(features: Sequence[str]) -> pd.DataFrame:
             lookback=lookback if lookback > 0 else None,
             formula_group=subfamily,
             depends_on=["high", "low", "close", "volume"],
+            formula=english,
+            economic_thesis="Volume and flow can proxy participation quality and continuation strength.",
+            expected_sign="positive",
         )
 
     # Physics / regime features implemented here.
@@ -1602,6 +2335,9 @@ def build_feature_registry(features: Sequence[str]) -> pd.DataFrame:
             lookback=lookback,
             formula_group=formula_group,
             depends_on=["close"],
+            formula=english,
+            economic_thesis="Persistence and regime structure may improve robustness across changing market states.",
+            expected_sign="mixed",
             family_cap_weight=0.5,
             interpretability_tag="medium",
         )
@@ -1626,6 +2362,9 @@ def build_feature_registry(features: Sequence[str]) -> pd.DataFrame:
             lookback=None,
             formula_group=subfamily,
             depends_on=["realized_vol_13"],
+            formula=english,
+            economic_thesis="Volatility-cluster context can identify when continuation or selectivity is more reliable.",
+            expected_sign="mixed",
             family_cap_weight=0.5,
             interpretability_tag="context",
         )
@@ -1647,6 +2386,9 @@ def build_feature_registry(features: Sequence[str]) -> pd.DataFrame:
             lookback=None,
             formula_group="xs_zscore",
             depends_on=[base],
+            formula=f"Cross-sectional z-score of {base}",
+            economic_thesis="Relative cross-sectional strength or weakness can improve ranking quality at a timestamp.",
+            expected_sign="positive",
             family_cap_weight=0.5,
             interpretability_tag="high",
         )
@@ -1715,6 +2457,8 @@ def build_feature_registry(features: Sequence[str]) -> pd.DataFrame:
             lookback=lookback,
             formula_group=formula_group,
             depends_on=list(depends_on),
+            formula=feat,
+            expected_sign="mixed",
             notes="Feature metadata inferred from naming convention.",
         )
 
@@ -2184,6 +2928,7 @@ def label_long_events(df: pd.DataFrame, config: PipelineConfig) -> pd.DataFrame:
         o = g["open"].values.astype(float)
         h = g["high"].values.astype(float)
         l = g["low"].values.astype(float)
+        c = g["close"].values.astype(float)
         atr = g["atr_14"].values.astype(float)
         ts = pd.to_datetime(g["timestamp_utc"]).values
         long_win = np.full(n, np.nan)
@@ -2192,6 +2937,7 @@ def label_long_events(df: pd.DataFrame, config: PipelineConfig) -> pd.DataFrame:
         entry_open = np.full(n, np.nan)
         stop_price = np.full(n, np.nan)
         target_price = np.full(n, np.nan)
+        forward_label_return_net = np.full(n, np.nan)
         for i in range(n):
             if bool(g.at[i, "is_incomplete_session"]):
                 continue
@@ -2207,30 +2953,40 @@ def label_long_events(df: pd.DataFrame, config: PipelineConfig) -> pd.DataFrame:
             target_price[i] = target
             outcome = 0
             end_idx = i + config.max_horizon_bars
+            exit_price = c[end_idx] if np.isfinite(c[end_idx]) else np.nan
             for j in range(i + 1, min(n, i + config.max_horizon_bars + 1)):
                 hit_stop = l[j] <= stop
                 hit_target = h[j] >= target
                 if hit_stop and hit_target:
                     outcome = 0
                     end_idx = j
+                    exit_price = stop
                     break
                 if hit_stop:
                     outcome = 0
                     end_idx = j
+                    exit_price = stop
                     break
                 if hit_target:
                     outcome = 1
                     end_idx = j
+                    exit_price = target
                     break
             long_win[i] = outcome
             event_end_idx[i] = end_idx
             event_end_time[i] = ts[int(end_idx)]
+            entry_exec = entry * (1.0 + config.slippage_per_fill)
+            exit_exec = exit_price * (1.0 - config.slippage_per_fill) if np.isfinite(exit_price) else np.nan
+            overnights = max(0, int(end_idx) - int(i + 1))
+            if np.isfinite(entry_exec) and entry_exec > 0 and np.isfinite(exit_exec):
+                forward_label_return_net[i] = (exit_exec / entry_exec) - 1.0 - (config.overnight_brokerage * overnights)
         g["long_win"] = long_win
         g["event_end_idx"] = event_end_idx
         g["event_end_time"] = pd.to_datetime(event_end_time, utc=True)
         g["entry_open_next"] = entry_open
         g["stop_price"] = stop_price
         g["target_price"] = target_price
+        g["forward_label_return_net"] = forward_label_return_net
         labeled.append(g)
     out = pd.concat(labeled, ignore_index=True)
     out = out.dropna(subset=["long_win"])
@@ -2407,11 +3163,11 @@ def run_optuna_inner(
     train_df: pd.DataFrame,
     config: PipelineConfig,
     features: Sequence[str],
-) -> Dict[str, Dict[str, object]]:
-    """Run Optuna over inner CV for RF, ET, XGB. Optimizes mean purged-inner-fold log loss. Returns best params per model."""
+) -> Tuple[Dict[str, Dict[str, object]], Dict[str, Dict[str, Any]]]:
+    """Run Optuna over inner CV for RF, ET, XGB with a Phase 1 wall-clock cap per model."""
     if not OPTUNA_AVAILABLE:
         logging.warning("Optuna not available. Using default parameters.")
-        return {}
+        return {}, {}
 
     inner_splits = purged_splits(train_df, config)
     y_train_full = train_df["long_win"].astype(int).values
@@ -2494,21 +3250,62 @@ def run_optuna_inner(
         )
 
     best_params: Dict[str, Dict[str, object]] = {}
+    optuna_summary: Dict[str, Dict[str, Any]] = {}
     sampler = optuna.samplers.TPESampler(seed=config.random_seed)
-    logging.info("  Optuna RF (n_trials=%s)...", config.optuna_n_trials)
-    study_rf = optuna.create_study(direction="minimize", sampler=sampler)
-    study_rf.optimize(objective_rf, n_trials=config.optuna_n_trials, show_progress_bar=False)
-    best_params["RF"] = study_rf.best_params
-    logging.info("  Optuna ET (n_trials=%s)...", config.optuna_n_trials)
-    study_et = optuna.create_study(direction="minimize", sampler=sampler)
-    study_et.optimize(objective_et, n_trials=config.optuna_n_trials, show_progress_bar=False)
-    best_params["ET"] = study_et.best_params
-    logging.info("  Optuna XGB (n_trials=%s)...", config.optuna_n_trials)
-    study_xgb = optuna.create_study(direction="minimize", sampler=sampler)
-    study_xgb.optimize(objective_xgb, n_trials=config.optuna_n_trials, show_progress_bar=False)
-    best_params["XGB"] = study_xgb.best_params
+
+    def _best_params_or_empty(study: Any) -> Dict[str, object]:
+        try:
+            params = getattr(study, "best_params", {})
+        except Exception:
+            return {}
+        return {str(key): value for key, value in dict(params).items()}
+
+    def _optimize_model(model_name: str, objective: Callable[[_TrialLike], float]) -> None:
+        logging.info(
+            "  Optuna %s (n_trials=%s, wall_clock_cap_seconds=%s)...",
+            model_name,
+            config.optuna_n_trials,
+            OPTUNA_MAX_WALL_CLOCK_SECONDS,
+        )
+        study = optuna.create_study(direction="minimize", sampler=sampler)
+        started_at = time.monotonic()
+        deadline = started_at + OPTUNA_MAX_WALL_CLOCK_SECONDS
+        stopped_for_wall_clock = False
+
+        def _stop_on_wall_clock(study_obj: Any, _trial: Any) -> None:
+            nonlocal stopped_for_wall_clock
+            if time.monotonic() >= deadline:
+                stopped_for_wall_clock = True
+                study_obj.stop()
+
+        study.optimize(
+            objective,
+            n_trials=config.optuna_n_trials,
+            show_progress_bar=False,
+            callbacks=[_stop_on_wall_clock],
+        )
+        elapsed_seconds = float(time.monotonic() - started_at)
+        params = _best_params_or_empty(study)
+        if not params:
+            logging.warning(
+                "  Optuna %s finished without completed trial parameters inside the %s-second wall-clock cap; using defaults.",
+                model_name,
+                OPTUNA_MAX_WALL_CLOCK_SECONDS,
+            )
+        best_params[model_name] = params
+        optuna_summary[model_name] = {
+            "elapsed_seconds": elapsed_seconds,
+            "wall_clock_cap_seconds": int(OPTUNA_MAX_WALL_CLOCK_SECONDS),
+            "requested_trials": int(config.optuna_n_trials),
+            "completed_trials": int(len(getattr(study, "trials", []))),
+            "stopped_for_wall_clock": bool(stopped_for_wall_clock),
+        }
+
+    _optimize_model("RF", objective_rf)
+    _optimize_model("ET", objective_et)
+    _optimize_model("XGB", objective_xgb)
     logging.info("Optuna best params | %s", best_params)
-    return best_params
+    return best_params, optuna_summary
 
 
 def impute_fit_transform(
@@ -2542,6 +3339,7 @@ def _fit_calibrated_stack(
     List[Dict[str, object]],
     List[Dict[str, Any]],
     Dict[str, Any],
+    Dict[str, Dict[str, Any]],
 ]:
     """Shared calibration split, OOF base, meta fit, full models, calibrator fit.
     Returns (meta, calibrator, imp, meta_fit_df, calibration_holdout_df, valid_idx,
@@ -2580,8 +3378,9 @@ def _fit_calibrated_stack(
 
     inner_splits = purged_splits(meta_fit_df, config)
     best_params: Dict[str, Dict[str, object]] = {}
+    optuna_summary: Dict[str, Dict[str, Any]] = {}
     if use_optuna and OPTUNA_AVAILABLE:
-        best_params = run_optuna_inner(meta_fit_df, config, features)
+        best_params, optuna_summary = run_optuna_inner(meta_fit_df, config, features)
     best_rf = best_params.get("RF", {})
     best_et = best_params.get("ET", {})
     best_xgb = best_params.get("XGB", {})
@@ -2691,6 +3490,7 @@ def _fit_calibrated_stack(
         inner_feature_importance,
         full_feature_importance,
         calib_stats,
+        optuna_summary,
     )
 
 
@@ -2700,6 +3500,8 @@ def fit_and_score_prediction_frame(
     features: Sequence[str],
     config: PipelineConfig,
     fold_name: str,
+    *,
+    previous_bucket_positive_rates: Optional[Sequence[float]] = None,
 ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, Dict[str, Any]]:
     """Train on fit_df (OOF base within meta_fit_df, meta on OOF base, calibrator on calibration holdout),
     score pred_df out-of-sample.
@@ -2722,6 +3524,7 @@ def fit_and_score_prediction_frame(
         inner_feature_importance,
         full_feature_importance,
         _calib_stats,
+        optuna_summary,
     ) = _fit_calibrated_stack(
         fit_df, features, config, fold_name,
         use_optuna=config.use_optuna_tuning and OPTUNA_AVAILABLE,
@@ -2739,7 +3542,13 @@ def fit_and_score_prediction_frame(
     pred_scored = pred_df.copy()
     pred_scored["p_cal"] = pred_cal
     pred_scored["cost_est_r"] = estimate_cost_r_from_frame(pred_scored, config)
-    fit_scored, pred_scored, empirical_meta = apply_empirical_probability_map(fit_scored, pred_scored, config)
+    fit_scored, pred_scored, empirical_meta = apply_empirical_probability_map(
+        fit_scored,
+        pred_scored,
+        config,
+        previous_bucket_positive_rates=previous_bucket_positive_rates,
+    )
+    empirical_meta["optuna_summary"] = optuna_summary
     return (
         fit_scored,
         pred_scored,
@@ -2755,6 +3564,8 @@ def fit_outer_fold(
     features: Sequence[str],
     config: PipelineConfig,
     fold_name: str,
+    *,
+    previous_bucket_positive_rates: Optional[Sequence[float]] = None,
 ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, Dict[str, Any], Dict[str, Any]]:
     # Calibration holdout inside outer-train (chronology-safe calibration relative to meta-model)
     if config.use_optuna_tuning and not OPTUNA_AVAILABLE:
@@ -2775,6 +3586,7 @@ def fit_outer_fold(
         inner_feature_importance,
         full_feature_importance,
         calib_stats,
+        optuna_summary,
     ) = _fit_calibrated_stack(
         train_df, features, config, fold_name,
         use_optuna=config.use_optuna_tuning and OPTUNA_AVAILABLE,
@@ -2794,7 +3606,14 @@ def fit_outer_fold(
     test_scored = test_df.copy()
     test_scored["p_cal"] = test_cal
     test_scored["cost_est_r"] = estimate_cost_r_from_frame(test_scored, config)
-    train_scored, test_scored, empirical_meta = apply_empirical_probability_map(train_scored, test_scored, config)
+    train_scored, test_scored, empirical_meta = apply_empirical_probability_map(
+        train_scored,
+        test_scored,
+        config,
+        previous_bucket_positive_rates=previous_bucket_positive_rates,
+    )
+    calib_stats = dict(calib_stats)
+    calib_stats["optuna_summary"] = optuna_summary
     return (
         train_scored,
         test_scored,
@@ -3072,9 +3891,15 @@ def simulate_book(
     theta_ev: float,
     theta_rel: float,
     fold_name: str,
+    audit_sink: Optional[List[Dict[str, Any]]] = None,
 ) -> Tuple[pd.DataFrame, pd.DataFrame, Dict[str, float]]:
     df = make_session_codes(scored_df).sort_values(["timestamp_utc", "ticker"]).copy()
     by_timestamp = {ts: g.copy() for ts, g in df.groupby("timestamp_utc", sort=True)}
+    last_row_by_ticker = {
+        str(ticker): group.sort_values("timestamp_utc").iloc[-1]
+        for ticker, group in df.groupby("ticker", sort=False)
+        if len(group)
+    }
     timestamps = sorted(by_timestamp.keys())
     cash = config.starting_capital
     active: Dict[str, List[Position]] = defaultdict(list)
@@ -3087,6 +3912,26 @@ def simulate_book(
     capacity_requested_notional = 0.0
     capacity_executed_notional = 0.0
     capacity_clipped_pnl_drag = 0.0
+
+    def append_audit(decision: str, row_like: Mapping[str, Any], **extra: Any) -> None:
+        if audit_sink is None:
+            return
+        audit_sink.append(
+            {
+                "fold": fold_name,
+                "timestamp_utc": str(row_like.get("timestamp_utc", "")),
+                "ticker": str(row_like.get("ticker", "")),
+                "decision": decision,
+                "max_concurrent": int(max_concurrent),
+                "p_cal": float(row_like.get("p_cal", np.nan)),
+                "p_empirical": float(row_like.get("p_empirical", row_like.get("p_cal", np.nan))),
+                "ev_empirical_r": float(row_like.get("ev_empirical_r", np.nan)),
+                "cost_est_r": float(row_like.get("cost_est_r", np.nan)),
+                "signal_dollar_volume": float(row_like.get("signal_dollar_volume", np.nan)),
+                "signal_adv_dollar_20": float(row_like.get("signal_adv_dollar_20", np.nan)),
+                **extra,
+            }
+        )
 
     def total_active_positions() -> int:
         return sum(len(v) for v in active.values())
@@ -3150,10 +3995,24 @@ def simulate_book(
             shares = max(0, min(requested_shares, max_shares_capacity))
             if shares <= 0:
                 capacity_skipped_orders += 1
+                append_audit("capacity_skipped", cast(Mapping[str, Any], order), requested_shares=int(requested_shares))
                 continue
             if shares < requested_shares:
                 capacity_clipped = 1
                 capacity_clipped_orders += 1
+                append_audit(
+                    "capacity_clipped_entered",
+                    cast(Mapping[str, Any], order),
+                    requested_shares=int(requested_shares),
+                    executed_shares=int(shares),
+                )
+            else:
+                append_audit(
+                    "entered",
+                    cast(Mapping[str, Any], order),
+                    requested_shares=int(requested_shares),
+                    executed_shares=int(shares),
+                )
             cash -= shares * exec_px
             executed_notional = shares * exec_px
             capacity_executed_notional += executed_notional
@@ -3293,6 +4152,7 @@ def simulate_book(
                 continue
             if total_open_slots() < max_concurrent:
                 pending.append({**cast(Dict[str, Any], cand["row"]), "sizing_equity": current_equity})
+                append_audit("queued_pending", cast(Mapping[str, Any], cand["row"]), queue_reason="slot_available")
                 continue
             incumbent_scores: List[Tuple[str, int, float]] = []
             for inc_ticker, positions in active.items():
@@ -3367,6 +4227,19 @@ def simulate_book(
                 replacement_exits += 1
                 if total_open_slots() < max_concurrent and ticker_open_slots(ticker) < config.max_positions_per_ticker:
                     pending.append({**cast(Dict[str, Any], cand["row"]), "sizing_equity": current_equity})
+                    append_audit(
+                        "queued_after_replacement",
+                        cast(Mapping[str, Any], cand["row"]),
+                        replaced_ticker=str(weakest_ticker),
+                        replaced_ev_r=float(weakest_ev_r),
+                    )
+            else:
+                append_audit(
+                    "rejected_no_replacement",
+                    cast(Mapping[str, Any], cand["row"]),
+                    weakest_ticker=str(weakest_ticker),
+                    weakest_ev_r=float(weakest_ev_r),
+                )
 
         equity_curve.append(
             {
@@ -3380,7 +4253,10 @@ def simulate_book(
         final_ts = timestamps[-1]
         group = by_timestamp[final_ts]
         for ticker, positions in list(active.items()):
-            row = group[group["ticker"] == ticker].iloc[0]
+            ticker_rows = group[group["ticker"] == ticker]
+            row = ticker_rows.iloc[0] if len(ticker_rows) else last_row_by_ticker.get(str(ticker))
+            if row is None:
+                continue
             for pos in positions:
                 exit_px = float(row["close"]) * (1 - config.slippage_per_fill)
                 entry_notional = pos.entry_exec_price * pos.shares
@@ -3563,16 +4439,20 @@ def choose_thresholds(
         "wrc_selected_avg_active_exposure": float(selected_row.get("avg_active_exposure", 0.0) or 0.0),
     }
     if candidate_returns and sufficient:
+        threshold_wrc_seed = int(config.random_seed + deterministic_seed_from_text(fold_name))
         return_matrix = np.column_stack(candidate_returns)
         wrc_result = moving_block_bootstrap_white_reality_check(
             return_matrix,
             block_length=config.threshold_wrc_block_length,
             bootstrap_reps=config.threshold_wrc_bootstrap_reps,
-            random_seed=int(config.random_seed + deterministic_seed_from_text(fold_name)),
+            random_seed=threshold_wrc_seed,
         )
         wrc_summary.update(wrc_result)
+        wrc_summary["threshold_wrc_seed"] = int(threshold_wrc_seed)
         wrc_summary["wrc_status"] = "pass" if float(wrc_result["wrc_pvalue"]) <= config.threshold_wrc_alpha else "fail"
         wrc_summary["wrc_pass"] = int(float(wrc_result["wrc_pvalue"]) <= config.threshold_wrc_alpha)
+    else:
+        wrc_summary["threshold_wrc_seed"] = int(config.random_seed + deterministic_seed_from_text(fold_name))
     if len(candidate_df):
         for key, value in wrc_summary.items():
             candidate_df[key] = value
@@ -3581,6 +4461,8 @@ def choose_thresholds(
         candidate_df["schema_version"] = SCHEMA_VERSION
         candidate_df["robustness_method_version"] = ROBUSTNESS_METHOD_VERSION
         candidate_df["search_family_definition_version"] = SEARCH_FAMILY_DEFINITION_VERSION
+        candidate_df["implementation_status"] = config.implementation_status
+        candidate_df["verification_stage_reached"] = config.verification_stage_reached
     return best_bundle, candidate_df, wrc_summary
 
 
@@ -3604,6 +4486,270 @@ def chain_equity_curves(equity_df: pd.DataFrame, max_concurrent: int, starting_c
     return pd.concat(pieces, ignore_index=True) if pieces else pd.DataFrame(
         columns=["timestamp_utc", "equity", "max_concurrent", "fold"]
     )
+
+
+def fit_linear_baseline_scored(
+    fit_df: pd.DataFrame,
+    score_df: pd.DataFrame,
+    features: Sequence[str],
+    config: PipelineConfig,
+    seed: int,
+) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+    usable = [feature for feature in features if feature in fit_df.columns and feature in score_df.columns]
+    fit_scored = fit_df.copy()
+    out = score_df.copy()
+    meta = {"baseline_feature_count": int(len(usable)), "baseline_status": "ok"}
+    if len(usable) < 2 or len(fit_df) == 0 or fit_df["long_win"].nunique() < 2:
+        fit_scored["p_cal"] = 0.5
+        out["p_cal"] = 0.5
+        fit_scored["cost_est_r"] = estimate_cost_r_from_frame(fit_scored, config)
+        out["cost_est_r"] = estimate_cost_r_from_frame(out, config)
+        fit_scored, out, empirical_meta = apply_empirical_probability_map(fit_scored, out, config)
+        meta["baseline_status"] = "fallback_constant"
+        meta.update(empirical_meta)
+        return out, meta
+    X_fit, X_score, _ = impute_fit_transform(fit_df[usable], score_df[usable])
+    model = LogisticRegression(
+        penalty="l2",
+        C=1.0,
+        solver="lbfgs",
+        max_iter=2000,
+        class_weight="balanced",
+        random_state=int(seed),
+    )
+    model.fit(X_fit, fit_df["long_win"].astype(int).values)
+    fit_scored["p_cal"] = clip_prob(model.predict_proba(X_fit)[:, 1])
+    out["p_cal"] = clip_prob(model.predict_proba(X_score)[:, 1])
+    fit_scored["cost_est_r"] = estimate_cost_r_from_frame(fit_scored, config)
+    out["cost_est_r"] = estimate_cost_r_from_frame(out, config)
+    fit_scored, out, empirical_meta = apply_empirical_probability_map(fit_scored, out, config)
+    meta.update(empirical_meta)
+    return out, meta
+
+
+def _select_equal_weight_rank_features(
+    candidate_features: Sequence[str],
+    feature_family_map: Mapping[str, Any],
+    max_features: int = 8,
+) -> List[str]:
+    selected: List[str] = []
+    seen_families: set[str] = set()
+    for feature in candidate_features:
+        family = str(feature_family_map.get(feature, "unknown"))
+        if family in seen_families:
+            continue
+        selected.append(feature)
+        seen_families.add(family)
+        if len(selected) >= max_features:
+            break
+    return selected
+
+
+def _infer_feature_direction(
+    fit_df: pd.DataFrame,
+    feature_name: str,
+    expected_sign: str,
+) -> int:
+    if str(expected_sign).lower().startswith("neg"):
+        return -1
+    if str(expected_sign).lower().startswith("pos"):
+        return 1
+    if feature_name not in fit_df.columns or "forward_label_return_net" not in fit_df.columns:
+        return 1
+    subset = fit_df[[feature_name, "forward_label_return_net"]].replace([np.inf, -np.inf], np.nan).dropna()
+    if len(subset) < 10:
+        return 1
+    corr = subset[feature_name].corr(subset["forward_label_return_net"], method="spearman")
+    return -1 if np.isfinite(corr) and float(corr) < 0 else 1
+
+
+def fit_equal_weight_rank_blend_scored(
+    fit_df: pd.DataFrame,
+    score_df: pd.DataFrame,
+    candidate_features: Sequence[str],
+    feature_registry_df: pd.DataFrame,
+    feature_family_map: Mapping[str, Any],
+    config: PipelineConfig,
+) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+    selected = _select_equal_weight_rank_features(candidate_features, feature_family_map, max_features=8)
+    fit_scored = fit_df.copy()
+    out = score_df.copy()
+    if not selected:
+        fit_scored["p_cal"] = 0.5
+        out["p_cal"] = 0.5
+        fit_scored["cost_est_r"] = estimate_cost_r_from_frame(fit_scored, config)
+        out["cost_est_r"] = estimate_cost_r_from_frame(out, config)
+        fit_scored, out, empirical_meta = apply_empirical_probability_map(fit_scored, out, config)
+        meta = {
+            "baseline_feature_count": 0,
+            "baseline_status": "fallback_constant",
+            "selected_features_json": json.dumps([]),
+        }
+        meta.update(empirical_meta)
+        return out, meta
+    registry = feature_registry_df.set_index("feature_name").to_dict("index") if len(feature_registry_df) else {}
+    directions = {
+        feature: _infer_feature_direction(
+            fit_df,
+            feature,
+            str(registry.get(feature, {}).get("expected_sign", "mixed")),
+        )
+        for feature in selected
+    }
+
+    def _blend_scores(frame: pd.DataFrame) -> pd.Series:
+        parts: List[pd.Series] = []
+        for feature in selected:
+            if feature not in frame.columns:
+                continue
+            adjusted = winsorize_series(frame[feature].astype(float)) * directions[feature]
+            parts.append(_pct_rank_by_timestamp(adjusted, frame["timestamp_utc"]))
+        if not parts:
+            return pd.Series(np.full(len(frame), 0.5), index=frame.index, dtype=float)
+        stack = pd.concat(parts, axis=1)
+        return stack.mean(axis=1).fillna(0.5)
+
+    fit_scores = _blend_scores(fit_df).astype(float)
+    score_scores = _blend_scores(score_df).astype(float)
+    fit_scored["p_cal"] = clip_prob(fit_scores.to_numpy(dtype=float))
+    sorted_fit = np.sort(fit_scores.to_numpy(dtype=float))
+    if len(sorted_fit) == 0:
+        out["p_cal"] = 0.5
+        status = "fallback_constant"
+    else:
+        probs = np.searchsorted(sorted_fit, score_scores.to_numpy(dtype=float), side="right") / len(sorted_fit)
+        out["p_cal"] = clip_prob(np.asarray(probs, dtype=float))
+        status = "ok"
+    fit_scored["cost_est_r"] = estimate_cost_r_from_frame(fit_scored, config)
+    out["cost_est_r"] = estimate_cost_r_from_frame(out, config)
+    fit_scored, out, empirical_meta = apply_empirical_probability_map(fit_scored, out, config)
+    meta = {
+        "baseline_feature_count": int(len(selected)),
+        "baseline_status": status,
+        "selected_features_json": json.dumps(selected),
+    }
+    meta.update(empirical_meta)
+    return out, meta
+
+
+def evaluate_model_contender(
+    contender_name: str,
+    fold_name: str,
+    threshold_holdout_scored: pd.DataFrame,
+    test_scored: pd.DataFrame,
+    test_df: pd.DataFrame,
+    config: PipelineConfig,
+) -> Dict[str, Any]:
+    best_bundle, _, wrc_summary = choose_thresholds(
+        threshold_holdout_scored,
+        config,
+        f"{fold_name}_{contender_name}",
+        max_concurrent=int(config.max_concurrent_options[0]),
+    )
+    fold_selected = int(wrc_summary.get("wrc_pass", 0) == 1)
+    fold_skip_reason = "" if fold_selected else str(wrc_summary.get("wrc_status", "wrc_fail"))
+    session_dates = session_dates_from_frame(test_df)
+    if fold_selected:
+        trades, equity, metrics = simulate_book(
+            test_scored,
+            config=config,
+            max_concurrent=int(config.max_concurrent_options[0]),
+            p_min=float(best_bundle["p_min"]),
+            theta_ev=float(best_bundle["theta_ev"]),
+            theta_rel=float(best_bundle["theta_rel"]),
+            fold_name=f"{fold_name}_{contender_name}_slots_{int(config.max_concurrent_options[0])}",
+        )
+        daily_frame = build_daily_equity_frame(
+            equity,
+            session_dates,
+            config.starting_capital,
+            int(config.max_concurrent_options[0]),
+        )
+    else:
+        trades = pd.DataFrame()
+        metrics = compute_metrics(pd.DataFrame(), pd.DataFrame(), config)
+        daily_frame = build_daily_equity_frame(
+            pd.DataFrame(),
+            session_dates,
+            config.starting_capital,
+            int(config.max_concurrent_options[0]),
+        )
+    daily_diag = compute_daily_return_diagnostics(daily_frame["daily_return"].tolist())
+    return {
+        "fold": fold_name,
+        "model_name": contender_name,
+        "max_concurrent": int(config.max_concurrent_options[0]),
+        "fold_selected": int(fold_selected),
+        "fold_skip_reason": fold_skip_reason,
+        "wrc_status": str(wrc_summary.get("wrc_status", "")),
+        "wrc_pvalue": float(wrc_summary.get("wrc_pvalue", np.nan)),
+        "adjusted_oos_sharpe": float(daily_diag.get("adjusted_sharpe_daily", 0.0)),
+        "net_oos_spread_after_costs": float(metrics.get("expectancy_r", 0.0)),
+        "profit_factor": float(metrics.get("profit_factor", 0.0)),
+        "max_drawdown": float(metrics.get("daily_mdd", metrics.get("mdd", 0.0))),
+        "calmar": float(metrics.get("daily_calmar", metrics.get("calmar", 0.0))),
+        "turnover_notional_to_equity": float(metrics.get("turnover_notional_to_avg_equity", 0.0)),
+        "capacity_drag_fraction_of_gross_alpha": float(metrics.get("capacity_drag_fraction_of_gross_alpha", 0.0)),
+        "n_trades": int(metrics.get("n_trades", len(trades))),
+        "n_daily_observations": int(daily_diag.get("n_daily_observations", 0)),
+        "schema_version": SCHEMA_VERSION,
+        "robustness_method_version": ROBUSTNESS_METHOD_VERSION,
+        "search_family_definition_version": SEARCH_FAMILY_DEFINITION_VERSION,
+    }
+
+
+def build_model_comparison_report(model_rows: pd.DataFrame) -> pd.DataFrame:
+    if model_rows.empty:
+        return pd.DataFrame(columns=MODEL_COMPARISON_REPORT_COLUMNS)
+    report = (
+        model_rows.groupby("model_name", as_index=False)
+        .agg(
+            folds_seen=("fold", "nunique"),
+            selected_fold_fraction=("fold_selected", "mean"),
+            mean_adjusted_oos_sharpe=("adjusted_oos_sharpe", "mean"),
+            mean_net_oos_spread_after_costs=("net_oos_spread_after_costs", "mean"),
+            mean_profit_factor=("profit_factor", "mean"),
+            mean_calmar=("calmar", "mean"),
+            mean_max_drawdown=("max_drawdown", "mean"),
+            mean_turnover_notional_to_equity=("turnover_notional_to_equity", "mean"),
+            mean_capacity_drag_fraction_of_gross_alpha=("capacity_drag_fraction_of_gross_alpha", "mean"),
+            total_trades=("n_trades", "sum"),
+        )
+    )
+    baseline_report = report[report["model_name"] != "incumbent_ml"]
+    baseline_best = float(baseline_report["mean_adjusted_oos_sharpe"].max()) if len(baseline_report) else 0.0
+    baseline_drawdown = float(baseline_report["mean_max_drawdown"].min()) if len(baseline_report) else math.inf
+    baseline_turnover = float(baseline_report["mean_turnover_notional_to_equity"].min()) if len(baseline_report) else math.inf
+    baseline_capacity_drag = (
+        float(baseline_report["mean_capacity_drag_fraction_of_gross_alpha"].min())
+        if len(baseline_report)
+        else math.inf
+    )
+    report["primary_metric_improvement_vs_best_baseline"] = np.where(
+        baseline_best > 1e-12,
+        report["mean_adjusted_oos_sharpe"] / baseline_best - 1.0,
+        np.nan,
+    )
+    report["materially_lower_drawdown_turnover_capacity_drag"] = (
+        (report["mean_max_drawdown"] <= baseline_drawdown)
+        & (report["mean_turnover_notional_to_equity"] <= baseline_turnover)
+        & (report["mean_capacity_drag_fraction_of_gross_alpha"] <= baseline_capacity_drag)
+    ).astype(int)
+    report["model_comparison_pass"] = (
+        (report["model_name"] == "incumbent_ml")
+        & (
+            (report["primary_metric_improvement_vs_best_baseline"] >= 0.10)
+            | (report["materially_lower_drawdown_turnover_capacity_drag"] == 1)
+        )
+    ).astype(int)
+    report["schema_version"] = SCHEMA_VERSION
+    report["robustness_method_version"] = ROBUSTNESS_METHOD_VERSION
+    report["search_family_definition_version"] = SEARCH_FAMILY_DEFINITION_VERSION
+    report["threshold_search_corrected"] = THRESHOLD_SEARCH_CORRECTED
+    report["full_pipeline_corrected"] = FULL_PIPELINE_CORRECTED
+    report["trial_scope_formal"] = TRIAL_SCOPE_FORMAL
+    report["trial_count_formal"] = 108
+    return report.sort_values("mean_adjusted_oos_sharpe", ascending=False).reset_index(drop=True)
 
 
 # ============================================================
@@ -3743,8 +4889,10 @@ def write_markdown_report(
     lines.append("This report summarizes the completed walk-forward, purged/embargoed, probability-calibrated swing pipeline.")
     lines.append("Outer folds use an expanding window (train window grows each fold).")
     lines.append("")
-    lines.append("## 2. Verified Input Panel")
+    lines.append("## 2. Input Panel Checks")
     lines.append("")
+    lines.append(f"- **implementation_status**: {overall_summary.get('implementation_status')}")
+    lines.append(f"- **verification_stage_reached**: {overall_summary.get('verification_stage_reached')}")
     for k, v in verification.items():
         lines.append(f"- **{k}**: {v}")
     lines.append("")
@@ -3777,24 +4925,53 @@ def write_markdown_report(
     for k, v in overall_summary.items():
         lines.append(f"- **{k}**: {v}")
     lines.append("")
-    lines.append("## 7. Robustness Scope")
+    lines.append("## Capacity")
     lines.append("")
     lines.append("- Max concurrent holdings is a cap of **8**, not a target occupancy.")
     lines.append("- Hard-gate robustness statistics are based on stitched calendar-day daily returns with idle selected-policy days recorded as zero returns.")
+    lines.append("")
+    lines.append("## Correction Flags")
+    lines.append("")
     lines.append(f"- `threshold_search_corrected`: {overall_summary.get('threshold_search_corrected')}")
     lines.append(f"- `full_pipeline_corrected`: {overall_summary.get('full_pipeline_corrected')}")
+    lines.append("")
+    lines.append("## Trial Definition")
+    lines.append("")
     lines.append(f"- `trial_scope_formal`: {overall_summary.get('trial_scope_formal')}")
     lines.append(f"- `trial_count_formal`: {overall_summary.get('trial_count_formal')}")
     lines.append(f"- `white_rc_pass_rate`: {overall_summary.get('white_rc_pass_rate')}")
     lines.append(f"- `deflated_sharpe_daily`: {overall_summary.get('deflated_sharpe_daily')}")
     lines.append(f"- `deflated_sharpe_probability`: {overall_summary.get('deflated_sharpe_probability')}")
+    lines.append("")
+    lines.append("## Ranking Map Guardrails")
+    lines.append("")
+    lines.append(f"- `ranking_map_guardrails_pass`: {overall_summary.get('ranking_map_guardrails_pass')}")
+    lines.append(f"- `ranking_map_guardrail_failure_reasons`: {overall_summary.get('ranking_map_guardrail_failure_reasons')}")
+    lines.append(
+        f"- `ranking_map_max_fallback_usage_fraction_allowed`: {overall_summary.get('ranking_map_max_fallback_usage_fraction_allowed')}"
+    )
+    lines.append(
+        f"- `ranking_map_min_adjacent_fold_spearman_allowed`: {overall_summary.get('ranking_map_min_adjacent_fold_spearman_allowed')}"
+    )
+    lines.append("")
+    lines.append("## Promotion Decision")
+    lines.append("")
     lines.append(f"- `robustness_pass`: {overall_summary.get('robustness_pass')}")
     lines.append(f"- `portfolio_policy_pass`: {overall_summary.get('portfolio_policy_pass')}")
+    lines.append(f"- `evidence_hierarchy_pass`: {overall_summary.get('evidence_hierarchy_pass')}")
     lines.append(f"- `promotion_pass`: {overall_summary.get('promotion_pass')}")
     lines.append(f"- `robustness_reason`: {overall_summary.get('robustness_reason')}")
     lines.append(f"- `portfolio_policy_reason`: {overall_summary.get('portfolio_policy_reason')}")
+    lines.append(f"- `evidence_hierarchy_reason`: {overall_summary.get('evidence_hierarchy_reason')}")
+    lines.append(f"- `scorecard_label`: {overall_summary.get('scorecard_label')}")
+    lines.append(f"- `scorecard_archetype`: {overall_summary.get('scorecard_archetype')}")
+    lines.append(f"- `research_viable`: {overall_summary.get('research_viable')}")
+    lines.append(f"- `live_pilot_viable`: {overall_summary.get('live_pilot_viable')}")
+    lines.append(f"- `allocation_ready`: {overall_summary.get('allocation_ready')}")
+    lines.append(f"- `feature_validation_pass`: {overall_summary.get('feature_validation_pass')}")
+    lines.append(f"- `model_comparison_pass`: {overall_summary.get('model_comparison_pass')}")
     lines.append("")
-    lines.append("## 8. Top Feature Importances")
+    lines.append("## Top Feature Importances")
     lines.append("")
     if len(feature_importance):
         try:
@@ -3804,7 +4981,7 @@ def write_markdown_report(
     else:
         lines.append("No feature importances available.")
     lines.append("")
-    lines.append("## 9. Output Directory")
+    lines.append("## Output Directory")
     lines.append("")
     lines.append(f"All CSV / JSON / chart outputs were written to `{output_root}`.")
     lines.append("")
@@ -4005,17 +5182,8 @@ def _resolve_project_path(path_str: str, force_project_drive: bool = False) -> P
     return (base / p).resolve()
 
 
-def _resolve_artifact_path(canonical_path: Path, output_dir: Path) -> Path:
-    """Return canonical path if it exists, else legacy output_dir/name for resume compatibility."""
-    if canonical_path.exists():
-        return canonical_path
-    legacy = output_dir / canonical_path.name
-    return legacy if legacy.exists() else canonical_path
-
-
 def load_resume_collections(
     paths: OutputPaths,
-    output_dir: Path,
     completed_fold_names: Sequence[str],
 ) -> Dict[str, Any]:
     loaded: Dict[str, Any] = {
@@ -4033,6 +5201,10 @@ def load_resume_collections(
         "all_thresholds": [],
         "all_threshold_candidate_rows": [],
         "all_policy_daily_rows": [],
+        "all_feature_validation_rows": [],
+        "all_feature_validation_daily_rows": [],
+        "all_model_comparison_rows": [],
+        "all_position_ranking_rows": [],
         "verification": None,
     }
     if not completed_fold_names:
@@ -4048,6 +5220,10 @@ def load_resume_collections(
         ("all_thresholds", paths.metrics_dir / "selected_thresholds.csv"),
         ("all_threshold_candidate_rows", paths.metrics_dir / "threshold_candidate_diagnostics.csv"),
         ("all_policy_daily_rows", paths.metrics_dir / "policy_daily_returns.csv"),
+        ("all_feature_validation_rows", paths.features_dir / "feature_validation_rows.csv"),
+        ("all_feature_validation_daily_rows", paths.features_dir / "feature_validation_ic_daily_rows.csv"),
+        ("all_model_comparison_rows", paths.strategies_dir / "model_comparison_report_rows.csv"),
+        ("all_position_ranking_rows", paths.strategies_dir / "position_ranking_audit.csv"),
     ]
     frame_specs = [
         ("all_trades", paths.metrics_dir / "trade_blotter.csv"),
@@ -4056,13 +5232,11 @@ def load_resume_collections(
         ("all_inner_feature_importance", paths.features_dir / "inner_feature_importances_by_fold.csv"),
     ]
     for key, artifact_path in record_specs:
-        resolved = _resolve_artifact_path(artifact_path, output_dir)
-        if resolved.exists():
-            loaded[key] = pd.read_csv(resolved).to_dict("records")
+        if artifact_path.exists():
+            loaded[key] = pd.read_csv(artifact_path).to_dict("records")
     for key, artifact_path in frame_specs:
-        resolved = _resolve_artifact_path(artifact_path, output_dir)
-        if resolved.exists():
-            loaded[key] = [pd.read_csv(resolved)]
+        if artifact_path.exists():
+            loaded[key] = [pd.read_csv(artifact_path)]
     ver_path = paths.state_dir / "verification.json"
     if ver_path.exists():
         loaded["verification"] = json.loads(ver_path.read_text(encoding="utf-8"))
@@ -4080,6 +5254,143 @@ def _install_sigint_handler() -> None:
         pass  # Not in main thread or signal not available
 
 
+def _restore_previous_ranking_map_profiles(
+    all_fold_metrics: Sequence[Mapping[str, Any]],
+    completed_fold_names: Sequence[str],
+) -> Tuple[Optional[List[float]], Optional[List[float]]]:
+    if not all_fold_metrics or not completed_fold_names:
+        return None, None
+    last_fold_name = str(completed_fold_names[-1])
+    for row in reversed(all_fold_metrics):
+        if str(row.get("fold", "")) != last_fold_name:
+            continue
+        threshold_rates = _deserialize_bucket_positive_rates(
+            row.get("ranking_map_bucket_positive_rates_threshold_holdout")
+        )
+        test_rates = _deserialize_bucket_positive_rates(
+            row.get("ranking_map_bucket_positive_rates_test")
+        )
+        return threshold_rates, test_rates
+    return None, None
+
+
+def _ranking_map_artifact_fields(meta: Mapping[str, Any], *, suffix: str) -> Dict[str, Any]:
+    return {
+        f"ranking_map_bucket_positive_rates_{suffix}": meta.get("ranking_map_bucket_positive_rates", "[]"),
+        f"ranking_map_fallback_usage_fraction_{suffix}": meta.get("ranking_map_fallback_usage_fraction", np.nan),
+        f"ranking_map_adjacent_fold_spearman_{suffix}": meta.get("ranking_map_adjacent_fold_spearman", np.nan),
+        f"ranking_map_adjacent_fold_spearman_evaluable_{suffix}": meta.get(
+            "ranking_map_adjacent_fold_spearman_evaluable",
+            False,
+        ),
+        f"ranking_map_guardrails_pass_{suffix}": meta.get("ranking_map_guardrails_pass", False),
+        f"ranking_map_guardrail_failure_reasons_{suffix}": meta.get("ranking_map_guardrail_failure_reasons", ""),
+    }
+
+
+def summarize_ranking_map_guardrails(
+    fold_metrics: pd.DataFrame,
+    config: PipelineConfig,
+) -> Dict[str, Any]:
+    if fold_metrics.empty:
+        return {
+            "ranking_map_guardrails_pass": False,
+            "ranking_map_guardrail_failure_reasons": "no_fold_metrics",
+            "ranking_map_guardrail_failed_fold_count": 0,
+            "ranking_map_guardrail_evaluable_fold_count_threshold_holdout": 0,
+            "ranking_map_guardrail_evaluable_fold_count_test": 0,
+            "ranking_map_max_fallback_usage_fraction_allowed": float(config.empirical_prob_map_max_fallback_usage_fraction),
+            "ranking_map_min_adjacent_fold_spearman_allowed": float(config.empirical_prob_map_min_adjacent_fold_spearman),
+            "ranking_map_fallback_usage_fraction_observed_max_threshold_holdout": np.nan,
+            "ranking_map_fallback_usage_fraction_observed_max_test": np.nan,
+            "ranking_map_adjacent_fold_spearman_observed_min_threshold_holdout": np.nan,
+            "ranking_map_adjacent_fold_spearman_observed_min_test": np.nan,
+        }
+
+    def _to_bool_series(column: str) -> pd.Series:
+        if column not in fold_metrics.columns:
+            return pd.Series(False, index=fold_metrics.index, dtype=bool)
+        values = fold_metrics[column]
+        if values.dtype == bool:
+            return values.fillna(False)
+        return values.astype(str).str.strip().str.lower().isin({"true", "1", "yes"})
+
+    def _to_numeric_series(column: str) -> pd.Series:
+        if column not in fold_metrics.columns:
+            return pd.Series(np.nan, index=fold_metrics.index, dtype=float)
+        return pd.to_numeric(fold_metrics[column], errors="coerce")
+
+    def _finite_min(series: pd.Series) -> float:
+        valid = series[np.isfinite(series.astype(float))]
+        return float(valid.min()) if len(valid) else np.nan
+
+    failure_reasons: List[str] = []
+    for column in (
+        "ranking_map_guardrail_failure_reasons_threshold_holdout",
+        "ranking_map_guardrail_failure_reasons_test",
+    ):
+        if column not in fold_metrics.columns:
+            continue
+        for raw in fold_metrics[column].dropna().astype(str):
+            text = raw.strip()
+            if not text or text == "ok":
+                continue
+            for item in text.split(";"):
+                candidate = item.strip()
+                if candidate and candidate not in failure_reasons:
+                    failure_reasons.append(candidate)
+
+    threshold_evaluable = _to_bool_series("ranking_map_adjacent_fold_spearman_evaluable_threshold_holdout")
+    test_evaluable = _to_bool_series("ranking_map_adjacent_fold_spearman_evaluable_test")
+    threshold_pass = _to_bool_series("ranking_map_guardrails_pass_threshold_holdout")
+    test_pass = _to_bool_series("ranking_map_guardrails_pass_test")
+    failed_rows = (~threshold_pass) | (~test_pass)
+
+    return {
+        "ranking_map_guardrails_pass": bool((~failed_rows).all()),
+        "ranking_map_guardrail_failure_reasons": "ok" if not failure_reasons else ";".join(failure_reasons),
+        "ranking_map_guardrail_failed_fold_count": int(failed_rows.sum()),
+        "ranking_map_guardrail_evaluable_fold_count_threshold_holdout": int(threshold_evaluable.sum()),
+        "ranking_map_guardrail_evaluable_fold_count_test": int(test_evaluable.sum()),
+        "ranking_map_max_fallback_usage_fraction_allowed": float(config.empirical_prob_map_max_fallback_usage_fraction),
+        "ranking_map_min_adjacent_fold_spearman_allowed": float(config.empirical_prob_map_min_adjacent_fold_spearman),
+        "ranking_map_fallback_usage_fraction_observed_max_threshold_holdout": float(
+            _to_numeric_series("ranking_map_fallback_usage_fraction_threshold_holdout").max()
+        ),
+        "ranking_map_fallback_usage_fraction_observed_max_test": float(
+            _to_numeric_series("ranking_map_fallback_usage_fraction_test").max()
+        ),
+        "ranking_map_adjacent_fold_spearman_observed_min_threshold_holdout": _finite_min(
+            _to_numeric_series("ranking_map_adjacent_fold_spearman_threshold_holdout").where(threshold_evaluable, np.nan)
+        ),
+        "ranking_map_adjacent_fold_spearman_observed_min_test": _finite_min(
+            _to_numeric_series("ranking_map_adjacent_fold_spearman_test").where(test_evaluable, np.nan)
+        ),
+    }
+
+
+def _optuna_artifact_fields(summary: Mapping[str, Any], *, prefix: str) -> Dict[str, Any]:
+    flattened: Dict[str, Any] = {
+        f"{prefix}_optuna_wall_clock_cap_seconds": int(OPTUNA_MAX_WALL_CLOCK_SECONDS),
+    }
+    for model_name in ("RF", "ET", "XGB"):
+        model_summary = summary.get(model_name, {}) if isinstance(summary, Mapping) else {}
+        key_prefix = f"{prefix}_optuna_{model_name.lower()}"
+        flattened[f"{key_prefix}_elapsed_seconds"] = (
+            float(model_summary.get("elapsed_seconds", np.nan)) if isinstance(model_summary, Mapping) else np.nan
+        )
+        flattened[f"{key_prefix}_completed_trials"] = (
+            int(model_summary.get("completed_trials", 0)) if isinstance(model_summary, Mapping) else 0
+        )
+        flattened[f"{key_prefix}_requested_trials"] = (
+            int(model_summary.get("requested_trials", 0)) if isinstance(model_summary, Mapping) else 0
+        )
+        flattened[f"{key_prefix}_stopped_for_wall_clock"] = (
+            bool(model_summary.get("stopped_for_wall_clock", False)) if isinstance(model_summary, Mapping) else False
+        )
+    return flattened
+
+
 def run_pipeline(config: PipelineConfig) -> Dict[str, object]:
     _install_sigint_handler()
     # Resolve paths relative to project root so files are saved to the project drive (e.g. E:)
@@ -4087,13 +5398,56 @@ def run_pipeline(config: PipelineConfig) -> Dict[str, object]:
     config.output_dir = str(output_dir)
     input_path = _resolve_project_path(config.input_panel_csv)
     config.input_panel_csv = str(input_path)
+    if config.deterministic_mode:
+        config.n_jobs_tree_models = 1
+        config.n_jobs_xgb = 1
+        config.seed_mode = "single"
     paths = build_output_paths(output_dir)
     if not config.resume:
         invalidate_stale_reports(paths)
     setup_logging(paths, resume=config.resume)
-    atomic_write_json(paths.state_dir / "config_snapshot.json", asdict(config))
+    requested_status = str(config.implementation_status)
+    requested_stage = str(config.verification_stage_reached)
+    normalized_status, normalized_stage = normalize_implementation_claim(
+        requested_status,
+        requested_stage,
+        deterministic_mode=bool(config.deterministic_mode),
+    )
+    if (normalized_status, normalized_stage) != (requested_status, requested_stage):
+        logging.info(
+            "Normalized implementation claim from status=%s stage=%s to status=%s stage=%s",
+            requested_status,
+            requested_stage,
+            normalized_status,
+            normalized_stage,
+        )
+    config.implementation_status = normalized_status
+    config.verification_stage_reached = normalized_stage
+    cost_model_ok, missing_cost_fields, cost_model_snapshot = validate_cost_model(config)
+    if not cost_model_ok:
+        raise RuntimeError(f"Invalid cost model schema; missing required fields: {missing_cost_fields}")
+    code_fingerprint = build_code_fingerprint()
+    input_data_hash = build_input_data_hash(input_path)
+    config_hash = build_config_hash(config)
+    config_snapshot_payload: Dict[str, Any] = {
+        **asdict(config),
+        "schema_version": SCHEMA_VERSION,
+        "robustness_method_version": ROBUSTNESS_METHOD_VERSION,
+        "search_family_definition_version": SEARCH_FAMILY_DEFINITION_VERSION,
+        "threshold_search_corrected": THRESHOLD_SEARCH_CORRECTED,
+        "full_pipeline_corrected": FULL_PIPELINE_CORRECTED,
+        "trial_scope_formal": TRIAL_SCOPE_FORMAL,
+        "trial_count_formal": int(threshold_policy_trial_count(config)),
+        "scorecard_label": SCORECARD_LABEL,
+        "scorecard_archetype": SCORECARD_ARCHETYPE,
+        "code_fingerprint": code_fingerprint,
+        "input_data_hash": input_data_hash,
+        "config_hash": config_hash,
+        "effective_cost_model": cost_model_snapshot,
+    }
+    atomic_write_json(paths.state_dir / "config_snapshot.json", config_snapshot_payload)
     if config.use_optuna_tuning and config.require_baseline_pass_for_tuning:
-        fm_path = _resolve_artifact_path(paths.metrics_dir / "fold_metrics.csv", output_dir)
+        fm_path = paths.metrics_dir / "fold_metrics.csv"
         if not fm_path.exists():
             raise RuntimeError(
                 "Optuna tuning requested, but no baseline fold_metrics.csv exists. "
@@ -4107,16 +5461,24 @@ def run_pipeline(config: PipelineConfig) -> Dict[str, object]:
             )
         logging.info("Optuna tuning enabled: baseline check passed (fold_metrics.csv exists and baseline_passed()).")
     resume_path = paths.state_dir / "resume_state.json"
-    legacy_resume_path = output_dir / "resume_state.json"
-    if config.resume and not resume_path.exists() and legacy_resume_path.exists():
-        resume_path = legacy_resume_path
     pre_fold_shortcut = False
     model_df: Optional[pd.DataFrame] = None
     features: List[str] = []
     folds: List[Tuple[object, object, object, object]] = []
     n_folds = 0
     feature_registry_df: Optional[pd.DataFrame] = None
-    verification: Dict[str, Any] = {"lightgbm_available": LIGHTGBM_AVAILABLE}
+    verification: Dict[str, Any] = {
+        "lightgbm_available": LIGHTGBM_AVAILABLE,
+        "cost_model_valid": bool(cost_model_ok),
+        "missing_cost_model_fields": list(missing_cost_fields),
+        "effective_cost_model": cost_model_snapshot,
+        "schema_version": SCHEMA_VERSION,
+        "robustness_method_version": ROBUSTNESS_METHOD_VERSION,
+        "search_family_definition_version": SEARCH_FAMILY_DEFINITION_VERSION,
+        "code_fingerprint": code_fingerprint,
+        "input_data_hash": input_data_hash,
+        "config_hash": config_hash,
+    }
     all_trades: List[pd.DataFrame] = []
     all_equity: List[pd.DataFrame] = []
     all_fold_metrics: List[Dict[str, Any]] = []
@@ -4131,6 +5493,12 @@ def run_pipeline(config: PipelineConfig) -> Dict[str, object]:
     all_thresholds: List[Dict[str, object]] = []
     all_threshold_candidate_rows: List[Dict[str, Any]] = []
     all_policy_daily_rows: List[Dict[str, Any]] = []
+    all_feature_validation_rows: List[Dict[str, Any]] = []
+    all_feature_validation_daily_rows: List[Dict[str, Any]] = []
+    all_model_comparison_rows: List[Dict[str, Any]] = []
+    all_position_ranking_rows: List[Dict[str, Any]] = []
+    previous_threshold_bucket_positive_rates: Optional[List[float]] = None
+    previous_test_bucket_positive_rates: Optional[List[float]] = None
     completed_fold_names: List[str] = []
     resume_fingerprint = build_resume_fingerprint(config)
     if config.resume and resume_path.exists():
@@ -4154,7 +5522,7 @@ def run_pipeline(config: PipelineConfig) -> Dict[str, object]:
                         n_folds = len(folds)
                         completed_fold_names = state.get("completed_fold_names", [])
                         logging.info("Resume: pre-fold shortcut — reusing model_ready_dataset and feature_registry (%s rows, %s folds done)", len(model_df), len(completed_fold_names))
-                        loaded = load_resume_collections(paths, output_dir, completed_fold_names)
+                        loaded = load_resume_collections(paths, completed_fold_names)
                         all_fold_metrics = loaded["all_fold_metrics"]
                         all_trades = loaded["all_trades"]
                         all_equity = loaded["all_equity"]
@@ -4169,6 +5537,14 @@ def run_pipeline(config: PipelineConfig) -> Dict[str, object]:
                         all_thresholds = loaded["all_thresholds"]
                         all_threshold_candidate_rows = loaded["all_threshold_candidate_rows"]
                         all_policy_daily_rows = loaded["all_policy_daily_rows"]
+                        all_feature_validation_rows = loaded["all_feature_validation_rows"]
+                        all_feature_validation_daily_rows = loaded["all_feature_validation_daily_rows"]
+                        all_model_comparison_rows = loaded["all_model_comparison_rows"]
+                        all_position_ranking_rows = loaded["all_position_ranking_rows"]
+                        (
+                            previous_threshold_bucket_positive_rates,
+                            previous_test_bucket_positive_rates,
+                        ) = _restore_previous_ranking_map_profiles(all_fold_metrics, completed_fold_names)
                         if loaded.get("verification") is not None:
                             verification = loaded["verification"]
                         pre_fold_shortcut = True
@@ -4177,7 +5553,8 @@ def run_pipeline(config: PipelineConfig) -> Dict[str, object]:
     if not pre_fold_shortcut:
         logging.info("Loading panel from %s", config.input_panel_csv)
         panel = load_panel(config)
-        verification = verify_panel(panel)
+        panel_verification = verify_panel(panel)
+        verification.update(panel_verification)
         verification["lightgbm_available"] = LIGHTGBM_AVAILABLE
         regularity = verify_panel_timestamp_regularity(panel)
         write_panel_regularity_outputs(output_dir, regularity)
@@ -4274,7 +5651,7 @@ def run_pipeline(config: PipelineConfig) -> Dict[str, object]:
                 if fingerprint_ok:
                     completed_fold_names = state.get("completed_fold_names", [])
                     logging.info("Resume: found %s completed folds: %s", len(completed_fold_names), completed_fold_names)
-                    loaded = load_resume_collections(paths, output_dir, completed_fold_names)
+                    loaded = load_resume_collections(paths, completed_fold_names)
                     all_fold_metrics = loaded["all_fold_metrics"]
                     all_trades = loaded["all_trades"]
                     all_equity = loaded["all_equity"]
@@ -4289,6 +5666,14 @@ def run_pipeline(config: PipelineConfig) -> Dict[str, object]:
                     all_thresholds = loaded["all_thresholds"]
                     all_threshold_candidate_rows = loaded["all_threshold_candidate_rows"]
                     all_policy_daily_rows = loaded["all_policy_daily_rows"]
+                    all_feature_validation_rows = loaded["all_feature_validation_rows"]
+                    all_feature_validation_daily_rows = loaded["all_feature_validation_daily_rows"]
+                    all_model_comparison_rows = loaded["all_model_comparison_rows"]
+                    all_position_ranking_rows = loaded["all_position_ranking_rows"]
+                    (
+                        previous_threshold_bucket_positive_rates,
+                        previous_test_bucket_positive_rates,
+                    ) = _restore_previous_ranking_map_profiles(all_fold_metrics, completed_fold_names)
                 else:
                     logging.info("Resume state rejected: config changed (fingerprint mismatch). Starting fresh.")
             except Exception as e:
@@ -4362,7 +5747,12 @@ def run_pipeline(config: PipelineConfig) -> Dict[str, object]:
             continue
         try:
             threshold_fit_scored, threshold_holdout_scored, _, _, threshold_empirical_meta = fit_and_score_prediction_frame(
-                threshold_fit_df, threshold_holdout_df, features, config, fold_name
+                threshold_fit_df,
+                threshold_holdout_df,
+                features,
+                config,
+                fold_name,
+                previous_bucket_positive_rates=previous_threshold_bucket_positive_rates,
             )
         except RuntimeError as e:
             msg = str(e)
@@ -4387,7 +5777,12 @@ def run_pipeline(config: PipelineConfig) -> Dict[str, object]:
             continue
         try:
             train_scored, test_scored, inner_imp, full_imp, calib_stats, empirical_meta = fit_outer_fold(
-                train_df, test_df, features, config, fold_name
+                train_df,
+                test_df,
+                features,
+                config,
+                fold_name,
+                previous_bucket_positive_rates=previous_test_bucket_positive_rates,
             )
         except RuntimeError as e:
             msg = str(e)
@@ -4399,6 +5794,12 @@ def run_pipeline(config: PipelineConfig) -> Dict[str, object]:
                     fold_name, e,
                 )
             continue
+        current_threshold_bucket_positive_rates = _deserialize_bucket_positive_rates(
+            threshold_empirical_meta.get("ranking_map_bucket_positive_rates")
+        )
+        current_test_bucket_positive_rates = _deserialize_bucket_positive_rates(
+            empirical_meta.get("ranking_map_bucket_positive_rates")
+        )
         train_diag = classification_diagnostics(train_scored["long_win"], train_scored["p_cal"])
         test_diag = classification_diagnostics(test_scored["long_win"], test_scored["p_cal"])
         bench_diag = benchmark_base_rate_metrics(test_scored["long_win"], train_df["long_win"])
@@ -4410,6 +5811,13 @@ def run_pipeline(config: PipelineConfig) -> Dict[str, object]:
             inner_imp_copy = inner_imp.copy()
             inner_imp_copy["fold"] = fold_name
             all_inner_feature_importance.append(inner_imp_copy)
+        feature_validation_rows, feature_validation_daily_rows = feature_validation_for_fold(
+            test_scored,
+            feature_registry_df,
+            fold_name,
+        )
+        all_feature_validation_rows.extend(feature_validation_rows)
+        all_feature_validation_daily_rows.extend(feature_validation_daily_rows)
 
         fold_candidate_features: List[str] = []
         if len(full_imp):
@@ -4571,6 +5979,67 @@ def run_pipeline(config: PipelineConfig) -> Dict[str, object]:
                     }
                 )
 
+        contender_holdout_frames: Dict[str, pd.DataFrame] = {
+            "incumbent_ml": threshold_holdout_scored.copy(),
+        }
+        contender_test_frames: Dict[str, pd.DataFrame] = {
+            "incumbent_ml": test_scored.copy(),
+        }
+        baseline_linear_holdout, linear_holdout_meta = fit_linear_baseline_scored(
+            threshold_fit_df,
+            threshold_holdout_df,
+            best_subset_features,
+            config,
+            seed=config.random_seed + fold_num,
+        )
+        baseline_linear_test, linear_test_meta = fit_linear_baseline_scored(
+            train_df,
+            test_df,
+            best_subset_features,
+            config,
+            seed=config.random_seed + 1_000 + fold_num,
+        )
+        contender_holdout_frames["baseline_linear"] = baseline_linear_holdout
+        contender_test_frames["baseline_linear"] = baseline_linear_test
+        baseline_rank_holdout, rank_holdout_meta = fit_equal_weight_rank_blend_scored(
+            threshold_fit_df,
+            threshold_holdout_df,
+            best_subset_features,
+            feature_registry_df,
+            feature_family_map,
+            config,
+        )
+        baseline_rank_test, rank_test_meta = fit_equal_weight_rank_blend_scored(
+            train_df,
+            test_df,
+            best_subset_features,
+            feature_registry_df,
+            feature_family_map,
+            config,
+        )
+        contender_holdout_frames["baseline_equal_weight_rank_blend"] = baseline_rank_holdout
+        contender_test_frames["baseline_equal_weight_rank_blend"] = baseline_rank_test
+        contender_meta = {
+            "baseline_linear": {**linear_holdout_meta, **linear_test_meta},
+            "baseline_equal_weight_rank_blend": {**rank_holdout_meta, **rank_test_meta},
+            "incumbent_ml": {
+                "baseline_feature_count": int(len(best_subset_features)),
+                "baseline_status": "ok",
+                "selected_features_json": json.dumps(best_subset_features),
+            },
+        }
+        for contender_name in ("baseline_linear", "baseline_equal_weight_rank_blend", "incumbent_ml"):
+            contender_row = evaluate_model_contender(
+                contender_name,
+                fold_name,
+                contender_holdout_frames[contender_name],
+                contender_test_frames[contender_name],
+                test_df,
+                config,
+            )
+            contender_row.update(contender_meta.get(contender_name, {}))
+            all_model_comparison_rows.append(contender_row)
+
         fold_rows: List[Dict[str, Any]] = []
         for max_concurrent in config.max_concurrent_options:
             thresholds, threshold_candidate_df, wrc_summary = choose_thresholds(threshold_holdout_scored, config, fold_name, max_concurrent)
@@ -4593,6 +6062,8 @@ def run_pipeline(config: PipelineConfig) -> Dict[str, object]:
                 "schema_version": SCHEMA_VERSION,
                 "robustness_method_version": ROBUSTNESS_METHOD_VERSION,
                 "search_family_definition_version": SEARCH_FAMILY_DEFINITION_VERSION,
+                "implementation_status": config.implementation_status,
+                "verification_stage_reached": config.verification_stage_reached,
             })
             if len(threshold_candidate_df):
                 threshold_candidate_df = threshold_candidate_df.copy()
@@ -4606,6 +6077,7 @@ def run_pipeline(config: PipelineConfig) -> Dict[str, object]:
                 theta_ev=thresholds["theta_ev"],
                 theta_rel=thresholds["theta_rel"],
                 fold_name=f"{fold_name}_slots_{max_concurrent}",
+                audit_sink=all_position_ranking_rows,
             )
             ic_binary = spearman_ic(test_scored["p_cal"], test_scored["long_win"])
             ic_r_mult = spearman_ic(
@@ -4632,6 +6104,15 @@ def run_pipeline(config: PipelineConfig) -> Dict[str, object]:
                 policy_daily["max_concurrent"] = int(max_concurrent)
                 policy_daily["fold_selected"] = int(fold_selected)
                 policy_daily["fold_skip_reason"] = fold_skip_reason
+                policy_daily["schema_version"] = SCHEMA_VERSION
+                policy_daily["robustness_method_version"] = ROBUSTNESS_METHOD_VERSION
+                policy_daily["search_family_definition_version"] = SEARCH_FAMILY_DEFINITION_VERSION
+                policy_daily["implementation_status"] = config.implementation_status
+                policy_daily["verification_stage_reached"] = config.verification_stage_reached
+                policy_daily["threshold_search_corrected"] = THRESHOLD_SEARCH_CORRECTED
+                policy_daily["full_pipeline_corrected"] = FULL_PIPELINE_CORRECTED
+                policy_daily["trial_scope_formal"] = TRIAL_SCOPE_FORMAL
+                policy_daily["trial_count_formal"] = int(threshold_policy_trial_count(config))
                 all_policy_daily_rows.extend(policy_daily.to_dict("records"))
             fold_metrics_row: Dict[str, Any] = {
                 **metrics,
@@ -4673,10 +6154,20 @@ def run_pipeline(config: PipelineConfig) -> Dict[str, object]:
                 "schema_version": SCHEMA_VERSION,
                 "robustness_method_version": ROBUSTNESS_METHOD_VERSION,
                 "search_family_definition_version": SEARCH_FAMILY_DEFINITION_VERSION,
+                "implementation_status": config.implementation_status,
+                "verification_stage_reached": config.verification_stage_reached,
+                "scorecard_label": SCORECARD_LABEL,
+                "scorecard_archetype": SCORECARD_ARCHETYPE,
                 "empirical_prob_map_status_threshold": threshold_empirical_meta.get("empirical_prob_map_status"),
                 "empirical_prob_map_support_rows_threshold": threshold_empirical_meta.get("empirical_prob_map_support_rows"),
                 "empirical_prob_map_status_test": empirical_meta.get("empirical_prob_map_status"),
                 "empirical_prob_map_support_rows_test": empirical_meta.get("empirical_prob_map_support_rows"),
+                "ranking_map_max_fallback_usage_fraction_allowed": threshold_empirical_meta.get(
+                    "ranking_map_max_fallback_usage_fraction_allowed"
+                ),
+                "ranking_map_min_adjacent_fold_spearman_allowed": threshold_empirical_meta.get(
+                    "ranking_map_min_adjacent_fold_spearman_allowed"
+                ),
                 "calibration_holdout_rows": calib_stats.get("calibration_holdout_rows"),
                 "calibration_holdout_pos_rate": calib_stats.get("calibration_holdout_pos_rate"),
                 "calibration_holdout_pos_count": calib_stats.get("calibration_holdout_pos_count"),
@@ -4689,6 +6180,16 @@ def run_pipeline(config: PipelineConfig) -> Dict[str, object]:
                 "test_log_loss": test_diag["log_loss"],
                 "train_brier": train_diag["brier"],
                 "test_brier": test_diag["brier"],
+                **_ranking_map_artifact_fields(threshold_empirical_meta, suffix="threshold_holdout"),
+                **_ranking_map_artifact_fields(empirical_meta, suffix="test"),
+                **_optuna_artifact_fields(
+                    cast(Mapping[str, Any], threshold_empirical_meta.get("optuna_summary", {})),
+                    prefix="threshold_fit",
+                ),
+                **_optuna_artifact_fields(
+                    cast(Mapping[str, Any], calib_stats.get("optuna_summary", {})),
+                    prefix="outer_fit",
+                ),
                 **bench_diag,
             }
             all_fold_metrics.append(fold_metrics_row)
@@ -4763,6 +6264,8 @@ def run_pipeline(config: PipelineConfig) -> Dict[str, object]:
                 best_profit_factor_text,
             )
         completed_fold_names = completed_fold_names + [fold_name]
+        previous_threshold_bucket_positive_rates = current_threshold_bucket_positive_rates
+        previous_test_bucket_positive_rates = current_test_bucket_positive_rates
         atomic_write_json(
             resume_path,
             {
@@ -4770,6 +6273,12 @@ def run_pipeline(config: PipelineConfig) -> Dict[str, object]:
                 "schema_version": SCHEMA_VERSION,
                 "robustness_method_version": ROBUSTNESS_METHOD_VERSION,
                 "search_family_definition_version": SEARCH_FAMILY_DEFINITION_VERSION,
+                "threshold_search_corrected": THRESHOLD_SEARCH_CORRECTED,
+                "full_pipeline_corrected": FULL_PIPELINE_CORRECTED,
+                "trial_scope_formal": TRIAL_SCOPE_FORMAL,
+                "trial_count_formal": int(threshold_policy_trial_count(config)),
+                "implementation_status": config.implementation_status,
+                "verification_stage_reached": config.verification_stage_reached,
                 "last_completed_fold": fold_num,
                 "completed_fold_names": completed_fold_names,
             },
@@ -4789,6 +6298,14 @@ def run_pipeline(config: PipelineConfig) -> Dict[str, object]:
             atomic_write_csv(pd.DataFrame(all_threshold_candidate_rows), paths.metrics_dir / "threshold_candidate_diagnostics.csv")
         if all_policy_daily_rows:
             atomic_write_csv(pd.DataFrame(all_policy_daily_rows), paths.metrics_dir / "policy_daily_returns.csv")
+        if all_feature_validation_rows:
+            atomic_write_csv(pd.DataFrame(all_feature_validation_rows), paths.features_dir / "feature_validation_rows.csv")
+        if all_feature_validation_daily_rows:
+            atomic_write_csv(pd.DataFrame(all_feature_validation_daily_rows), paths.features_dir / "feature_validation_ic_daily_rows.csv")
+        if all_model_comparison_rows:
+            atomic_write_csv(pd.DataFrame(all_model_comparison_rows), paths.strategies_dir / "model_comparison_report_rows.csv")
+        if all_position_ranking_rows:
+            atomic_write_csv(pd.DataFrame(all_position_ranking_rows), paths.strategies_dir / "position_ranking_audit.csv")
         if all_subset_search_rows:
             atomic_write_csv(pd.DataFrame(all_subset_search_rows), paths.features_dir / "subset_search_summary.csv")
         if all_selected_feature_rows:
@@ -4879,6 +6396,15 @@ def run_pipeline(config: PipelineConfig) -> Dict[str, object]:
     overall_metrics["schema_version"] = SCHEMA_VERSION
     overall_metrics["robustness_method_version"] = ROBUSTNESS_METHOD_VERSION
     overall_metrics["search_family_definition_version"] = SEARCH_FAMILY_DEFINITION_VERSION
+    overall_metrics["implementation_status"] = (
+        config.implementation_status if config.implementation_status in IMPLEMENTATION_STATUS_VALUES else "present"
+    )
+    overall_metrics["verification_stage_reached"] = str(config.verification_stage_reached)
+    overall_metrics["scorecard_label"] = SCORECARD_LABEL
+    overall_metrics["scorecard_archetype"] = SCORECARD_ARCHETYPE
+    overall_metrics["code_fingerprint"] = code_fingerprint
+    overall_metrics["input_data_hash"] = input_data_hash
+    overall_metrics["config_hash"] = config_hash
     if len(trades_best):
         per_ticker = trades_best.groupby("ticker")["pnl"].sum().abs()
         top_share_abs = float(per_ticker.max() / per_ticker.sum()) if per_ticker.sum() > 0 else 1.0
@@ -4897,8 +6423,15 @@ def run_pipeline(config: PipelineConfig) -> Dict[str, object]:
     overall_metrics.update(research_meta)
     capacity_eval = evaluate_capacity_rule_compliance(trades_best, config)
     regime_eval = evaluate_regime_diversity_policy(trades_best)
+    capacity_headroom = capacity_headroom_metrics(trades_best, overall_metrics, config)
     overall_metrics.update(capacity_eval)
+    overall_metrics.update(capacity_headroom)
     overall_metrics.update(regime_eval)
+    overall_metrics["n_positive_folds"] = int((fold_metrics_best["expectancy_r"].astype(float) > 0).sum()) if len(fold_metrics_best) else 0
+    overall_metrics["positive_fold_fraction"] = (
+        float((fold_metrics_best["expectancy_r"].astype(float) > 0).mean()) if len(fold_metrics_best) else 0.0
+    )
+    overall_metrics.update(summarize_ranking_map_guardrails(fold_metrics_best, config))
     overall_metrics["chronology_checks_pass"] = True
     overall_metrics["sufficient_stitched_oos"] = bool(
         int(overall_metrics.get("n_daily_observations", 0)) >= int(config.final_min_oos_daily_observations)
@@ -4910,6 +6443,8 @@ def run_pipeline(config: PipelineConfig) -> Dict[str, object]:
         robustness_failures.append("capacity_rule_violation")
     if not bool(overall_metrics.get("sufficient_stitched_oos", False)):
         robustness_failures.append("insufficient_stitched_oos")
+    if not bool(overall_metrics.get("ranking_map_guardrails_pass", False)):
+        robustness_failures.append("ranking_map_guardrail_breach")
     deflated_sharpe_value = float(overall_metrics.get("deflated_sharpe_daily", np.nan))
     if (not np.isfinite(deflated_sharpe_value)) or deflated_sharpe_value <= 0:
         robustness_failures.append("deflated_sharpe_non_positive")
@@ -4927,6 +6462,7 @@ def run_pipeline(config: PipelineConfig) -> Dict[str, object]:
     overall_metrics["promotion_pass"] = bool(overall_metrics["robustness_pass"] and overall_metrics["portfolio_policy_pass"])
     overall_metrics["robustness_reason"] = "ok" if overall_metrics["robustness_pass"] else ";".join(robustness_failures)
     overall_metrics["portfolio_policy_reason"] = "ok" if overall_metrics["portfolio_policy_pass"] else ";".join(policy_failures)
+    overall_metrics.update(evaluate_scorecard_defaults(overall_metrics))
     log_overall_summary(overall_metrics)
     if fold_metrics_df.empty:
         raise RuntimeError("No outer folds completed successfully; cannot build required strategy/discovery outputs.")
@@ -5046,6 +6582,55 @@ def run_pipeline(config: PipelineConfig) -> Dict[str, object]:
         .sort_values(["regime", "mean_spearman_ic"], ascending=[True, False])
     )
 
+    feature_validation_rows_df = ensure_columns(pd.DataFrame(all_feature_validation_rows), FEATURE_VALIDATION_ROW_COLUMNS)
+    feature_validation_daily_df = ensure_columns(pd.DataFrame(all_feature_validation_daily_rows), FEATURE_VALIDATION_DAILY_COLUMNS)
+    feature_validation_report = build_feature_validation_report(
+        feature_validation_rows_df,
+        feature_validation_daily_df,
+        feature_registry_df,
+    )
+    for frame in (feature_validation_rows_df, feature_validation_daily_df, feature_validation_report):
+        frame["schema_version"] = SCHEMA_VERSION
+        frame["robustness_method_version"] = ROBUSTNESS_METHOD_VERSION
+        frame["search_family_definition_version"] = SEARCH_FAMILY_DEFINITION_VERSION
+        frame["implementation_status"] = config.implementation_status
+        frame["verification_stage_reached"] = config.verification_stage_reached
+        frame["threshold_search_corrected"] = THRESHOLD_SEARCH_CORRECTED
+        frame["full_pipeline_corrected"] = FULL_PIPELINE_CORRECTED
+        frame["trial_scope_formal"] = TRIAL_SCOPE_FORMAL
+        frame["trial_count_formal"] = int(threshold_policy_trial_count(config))
+
+    model_comparison_rows_df = ensure_columns(pd.DataFrame(all_model_comparison_rows), MODEL_COMPARISON_ROW_COLUMNS)
+    model_comparison_report = build_model_comparison_report(model_comparison_rows_df)
+    model_comparison_rows_df["threshold_search_corrected"] = THRESHOLD_SEARCH_CORRECTED
+    model_comparison_rows_df["full_pipeline_corrected"] = FULL_PIPELINE_CORRECTED
+    model_comparison_rows_df["trial_scope_formal"] = TRIAL_SCOPE_FORMAL
+    model_comparison_rows_df["trial_count_formal"] = int(threshold_policy_trial_count(config))
+    model_comparison_rows_df["implementation_status"] = config.implementation_status
+    model_comparison_rows_df["verification_stage_reached"] = config.verification_stage_reached
+    model_comparison_report["implementation_status"] = config.implementation_status
+    model_comparison_report["verification_stage_reached"] = config.verification_stage_reached
+    model_comparison_pass = bool(
+        len(model_comparison_report)
+        and int(
+            model_comparison_report.loc[
+                model_comparison_report["model_name"] == "incumbent_ml",
+                "model_comparison_pass",
+            ].fillna(0).max()
+        )
+        == 1
+    )
+    overall_metrics["model_comparison_pass"] = model_comparison_pass
+    validated_feature_names: Set[str] = set()
+    if len(feature_validation_report):
+        validated_feature_names = set(
+            feature_validation_report.loc[
+                feature_validation_report["feature_validation_pass"].astype(int) == 1,
+                "feature",
+            ].astype(str).tolist()
+        )
+    overall_metrics["feature_validation_pass"] = False
+
     candidate_features = fold_stability_table.merge(
         permutation_importance[["feature", "mean_log_loss_increase"]],
         on="feature",
@@ -5061,6 +6646,7 @@ def run_pipeline(config: PipelineConfig) -> Dict[str, object]:
     candidate_features["mean_log_loss_increase"] = candidate_features["mean_log_loss_increase"].fillna(0.0)
     candidate_features["stability_rank_norm"] = candidate_features["fold_stability"].rank(pct=True)
     candidate_features["ablation_rank_norm"] = candidate_features["mean_log_loss_increase"].rank(pct=True)
+    candidate_features["feature_validation_pass"] = candidate_features["feature"].isin(validated_feature_names).astype(int)
     candidate_features["discovery_score"] = (
         0.60 * candidate_features["stability_rank_norm"] + 0.40 * candidate_features["ablation_rank_norm"]
     )
@@ -5068,11 +6654,16 @@ def run_pipeline(config: PipelineConfig) -> Dict[str, object]:
         ["discovery_score", "fold_stability", "mean_importance"],
         ascending=[False, False, False],
     )
+    selection_pool = candidate_features[candidate_features["feature_validation_pass"] == 1].copy()
+    selection_pool_reason = "validated_only"
+    if selection_pool.empty:
+        selection_pool = candidate_features.copy()
+        selection_pool_reason = "fallback_any_discovery"
     selected_rows: List[Dict[str, Any]] = []
     family_counter: Dict[str, int] = defaultdict(int)
     max_selected = 30
     family_cap = max(1, int(math.ceil(max_selected * 0.30)))
-    for row in candidate_features.itertuples(index=False):
+    for row in selection_pool.itertuples(index=False):
         if float(cast(Any, row.fold_stability)) < 0.50:
             continue
         fam = str(cast(Any, row.family))
@@ -5086,6 +6677,8 @@ def run_pipeline(config: PipelineConfig) -> Dict[str, object]:
                 "mean_importance": float(cast(Any, row.mean_importance)) if pd.notna(row.mean_importance) else np.nan,
                 "mean_log_loss_increase": float(cast(Any, row.mean_log_loss_increase)),
                 "discovery_score": float(cast(Any, row.discovery_score)),
+                "feature_validation_pass": int(cast(Any, row.feature_validation_pass)),
+                "selection_pool_reason": selection_pool_reason,
             }
         )
         family_counter[fam] += 1
@@ -5094,6 +6687,19 @@ def run_pipeline(config: PipelineConfig) -> Dict[str, object]:
     selected_final_feature_set = pd.DataFrame(selected_rows)
     if selected_final_feature_set.empty:
         raise RuntimeError("No stable final feature set could be selected under fold stability and family-cap constraints.")
+    selected_features_validated = int(selected_final_feature_set["feature_validation_pass"].sum()) if "feature_validation_pass" in selected_final_feature_set.columns else 0
+    selected_feature_count = int(len(selected_final_feature_set))
+    overall_metrics["selected_feature_count"] = selected_feature_count
+    overall_metrics["selected_validated_feature_count"] = selected_features_validated
+    overall_metrics["selected_validated_feature_fraction"] = (
+        float(selected_features_validated / selected_feature_count) if selected_feature_count > 0 else 0.0
+    )
+    overall_metrics["selected_feature_validation_pool"] = selection_pool_reason
+    overall_metrics["feature_validation_pass"] = bool(
+        selected_feature_count > 0
+        and selected_features_validated == selected_feature_count
+        and len(validated_feature_names) > 0
+    )
 
     rejected_unstable_features = candidate_features[candidate_features["fold_stability"] < 0.50][
         ["feature", "family", "fold_stability", "mean_importance", "mean_log_loss_increase"]
@@ -5112,9 +6718,46 @@ def run_pipeline(config: PipelineConfig) -> Dict[str, object]:
         )
     else:
         rejected_unstable_features["n_fold_rejections"] = np.nan
+    evidence_failures: List[str] = []
+    if not bool(overall_metrics.get("feature_validation_pass", False)):
+        evidence_failures.append("feature_validation_fail")
+    if not bool(overall_metrics.get("model_comparison_pass", False)):
+        evidence_failures.append("model_comparison_fail")
+    overall_metrics["evidence_hierarchy_pass"] = len(evidence_failures) == 0
+    overall_metrics["evidence_hierarchy_reason"] = "ok" if overall_metrics["evidence_hierarchy_pass"] else ";".join(evidence_failures)
+    overall_metrics["promotion_pass"] = bool(
+        overall_metrics.get("robustness_pass", False)
+        and overall_metrics.get("portfolio_policy_pass", False)
+        and overall_metrics.get("evidence_hierarchy_pass", False)
+    )
 
     # Strategy library and scorecards.
-    strategy_scorecards = fold_metrics_df.copy()
+    strategy_scorecards = pd.DataFrame(
+        [
+            {
+                "max_concurrent": int(best_concurrent),
+                "scorecard_label": SCORECARD_LABEL,
+                "scorecard_archetype": SCORECARD_ARCHETYPE,
+                "research_viable": bool(overall_metrics.get("research_viable", False)),
+                "live_pilot_viable": bool(overall_metrics.get("live_pilot_viable", False)),
+                "allocation_ready": bool(overall_metrics.get("allocation_ready", False)),
+                "feature_validation_pass": bool(overall_metrics.get("feature_validation_pass", False)),
+                "model_comparison_pass": bool(overall_metrics.get("model_comparison_pass", False)),
+                "evidence_hierarchy_pass": bool(overall_metrics.get("evidence_hierarchy_pass", False)),
+                "ranking_map_guardrails_pass": bool(overall_metrics.get("ranking_map_guardrails_pass", False)),
+                "promotion_pass": bool(overall_metrics.get("promotion_pass", False)),
+                "implementation_status": str(overall_metrics.get("implementation_status", "present")),
+                "verification_stage_reached": str(overall_metrics.get("verification_stage_reached", "code_present")),
+                "schema_version": SCHEMA_VERSION,
+                "robustness_method_version": ROBUSTNESS_METHOD_VERSION,
+                "search_family_definition_version": SEARCH_FAMILY_DEFINITION_VERSION,
+                "threshold_search_corrected": THRESHOLD_SEARCH_CORRECTED,
+                "full_pipeline_corrected": FULL_PIPELINE_CORRECTED,
+                "trial_scope_formal": TRIAL_SCOPE_FORMAL,
+                "trial_count_formal": int(overall_metrics.get("trial_count_formal", threshold_policy_trial_count(config))),
+            }
+        ]
+    )
     strategy_library = pd.DataFrame()
     if len(by_conc):
         strategy_library = by_conc.copy()
@@ -5182,15 +6825,49 @@ def run_pipeline(config: PipelineConfig) -> Dict[str, object]:
             "promotion_pass": bool(overall_metrics.get("promotion_pass", False)),
             "robustness_reason": str(overall_metrics.get("robustness_reason", "")),
             "portfolio_policy_reason": str(overall_metrics.get("portfolio_policy_reason", "")),
+            "feature_validation_pass": bool(overall_metrics.get("feature_validation_pass", False)),
+            "model_comparison_pass": bool(overall_metrics.get("model_comparison_pass", False)),
+            "evidence_hierarchy_pass": bool(overall_metrics.get("evidence_hierarchy_pass", False)),
+            "ranking_map_guardrails_pass": bool(overall_metrics.get("ranking_map_guardrails_pass", False)),
+            "ranking_map_guardrail_failure_reasons": str(overall_metrics.get("ranking_map_guardrail_failure_reasons", "")),
+            "ranking_map_max_fallback_usage_fraction_allowed": float(
+                overall_metrics.get("ranking_map_max_fallback_usage_fraction_allowed", np.nan)
+            ),
+            "ranking_map_min_adjacent_fold_spearman_allowed": float(
+                overall_metrics.get("ranking_map_min_adjacent_fold_spearman_allowed", np.nan)
+            ),
+            "ranking_map_fallback_usage_fraction_observed_max_threshold_holdout": float(
+                overall_metrics.get("ranking_map_fallback_usage_fraction_observed_max_threshold_holdout", np.nan)
+            ),
+            "ranking_map_fallback_usage_fraction_observed_max_test": float(
+                overall_metrics.get("ranking_map_fallback_usage_fraction_observed_max_test", np.nan)
+            ),
+            "ranking_map_adjacent_fold_spearman_observed_min_threshold_holdout": float(
+                overall_metrics.get("ranking_map_adjacent_fold_spearman_observed_min_threshold_holdout", np.nan)
+            ),
+            "ranking_map_adjacent_fold_spearman_observed_min_test": float(
+                overall_metrics.get("ranking_map_adjacent_fold_spearman_observed_min_test", np.nan)
+            ),
+            "scorecard_label": SCORECARD_LABEL,
+            "scorecard_archetype": SCORECARD_ARCHETYPE,
+            "research_viable": bool(overall_metrics.get("research_viable", False)),
+            "live_pilot_viable": bool(overall_metrics.get("live_pilot_viable", False)),
+            "allocation_ready": bool(overall_metrics.get("allocation_ready", False)),
+            "implementation_status": str(overall_metrics.get("implementation_status", "present")),
+            "verification_stage_reached": str(overall_metrics.get("verification_stage_reached", "code_present")),
             "schema_version": SCHEMA_VERSION,
             "robustness_method_version": ROBUSTNESS_METHOD_VERSION,
             "search_family_definition_version": SEARCH_FAMILY_DEFINITION_VERSION,
         }
         strategy_library = strategy_library.merge(pd.DataFrame([final_strategy_fields]), on="max_concurrent", how="left")
-        strategy_library["hard_gate_pass"] = strategy_library["promotion_pass"].astype(bool)
+        strategy_library["hard_gate_pass"] = (
+            strategy_library["robustness_pass"].astype(bool)
+            & strategy_library["feature_validation_pass"].astype(bool)
+            & strategy_library["model_comparison_pass"].astype(bool)
+        )
         strategy_library = strategy_library.sort_values(
-            ["promotion_pass", "robustness_pass", "stitched_daily_calmar", "avg_pf", "avg_expectancy_r", "n_trades"],
-            ascending=[False, False, False, False, False, False],
+            ["promotion_pass", "hard_gate_pass", "robustness_pass", "stitched_daily_calmar", "avg_pf", "avg_expectancy_r", "n_trades"],
+            ascending=[False, False, False, False, False, False, False],
         ).reset_index(drop=True)
         strategy_library["strategy_rank"] = np.arange(1, len(strategy_library) + 1)
 
@@ -5279,6 +6956,9 @@ def run_pipeline(config: PipelineConfig) -> Dict[str, object]:
     atomic_write_csv(pd.DataFrame(all_rejected_feature_rows), paths.features_dir / "rejected_features_by_fold.csv")
     atomic_write_csv(feature_stability, paths.features_dir / "feature_stability_summary.csv")
     atomic_write_csv(ranked_feature_table, paths.features_dir / "ranked_feature_table.csv")
+    atomic_write_csv(feature_validation_rows_df, paths.features_dir / "feature_validation_rows.csv")
+    atomic_write_csv(feature_validation_daily_df, paths.features_dir / "feature_validation_ic_daily_rows.csv")
+    atomic_write_csv(feature_validation_report, paths.features_dir / "feature_validation_report.csv")
     atomic_write_csv(family_importance_table, paths.features_dir / "family_importance_table.csv")
     atomic_write_csv(fold_stability_table, paths.features_dir / "fold_stability_table.csv")
     atomic_write_csv(feature_ablation, paths.features_dir / "feature_ablation.csv")
@@ -5290,17 +6970,50 @@ def run_pipeline(config: PipelineConfig) -> Dict[str, object]:
     atomic_write_csv(permutation_importance, paths.features_dir / "permutation_importance.csv")
     atomic_write_csv(strategy_library, paths.strategies_dir / "strategy_library.csv")
     atomic_write_csv(strategy_scorecards, paths.strategies_dir / "strategy_scorecards.csv")
+    atomic_write_csv(model_comparison_rows_df, paths.strategies_dir / "model_comparison_report_rows.csv")
+    atomic_write_csv(model_comparison_report, paths.strategies_dir / "model_comparison_report.csv")
+    position_ranking_audit_df = ensure_columns(pd.DataFrame(all_position_ranking_rows), POSITION_RANKING_AUDIT_COLUMNS)
+    position_ranking_audit_df["schema_version"] = SCHEMA_VERSION
+    position_ranking_audit_df["robustness_method_version"] = ROBUSTNESS_METHOD_VERSION
+    position_ranking_audit_df["search_family_definition_version"] = SEARCH_FAMILY_DEFINITION_VERSION
+    position_ranking_audit_df["implementation_status"] = config.implementation_status
+    position_ranking_audit_df["verification_stage_reached"] = config.verification_stage_reached
+    position_ranking_audit_df["threshold_search_corrected"] = THRESHOLD_SEARCH_CORRECTED
+    position_ranking_audit_df["full_pipeline_corrected"] = FULL_PIPELINE_CORRECTED
+    position_ranking_audit_df["trial_scope_formal"] = TRIAL_SCOPE_FORMAL
+    position_ranking_audit_df["trial_count_formal"] = int(threshold_policy_trial_count(config))
+    atomic_write_csv(position_ranking_audit_df, paths.strategies_dir / "position_ranking_audit.csv")
     atomic_write_csv(seed_robustness_summary, paths.strategies_dir / "seed_robustness_summary.csv")
+    verification["implementation_status"] = overall_metrics.get("implementation_status", config.implementation_status)
+    verification["verification_stage_reached"] = overall_metrics.get("verification_stage_reached", config.verification_stage_reached)
+    verification["ranking_map_guardrails_pass"] = bool(overall_metrics.get("ranking_map_guardrails_pass", False))
+    verification["ranking_map_guardrail_failure_reasons"] = str(
+        overall_metrics.get("ranking_map_guardrail_failure_reasons", "")
+    )
     atomic_write_json(paths.state_dir / "verification.json", verification)
-    atomic_write_json(paths.state_dir / "config_snapshot.json", asdict(config))
+    atomic_write_json(paths.state_dir / "config_snapshot.json", config_snapshot_payload)
     atomic_write_json(paths.metrics_dir / "overall_metrics.json", overall_metrics)
     best_strategy_summary = (
         strategy_library.iloc[0].to_dict()
         if len(strategy_library)
         else {
             "max_concurrent": best_concurrent,
+            "schema_version": SCHEMA_VERSION,
+            "robustness_method_version": ROBUSTNESS_METHOD_VERSION,
+            "search_family_definition_version": SEARCH_FAMILY_DEFINITION_VERSION,
+            "implementation_status": str(overall_metrics.get("implementation_status", "present")),
+            "verification_stage_reached": str(overall_metrics.get("verification_stage_reached", "code_present")),
             "threshold_search_corrected": THRESHOLD_SEARCH_CORRECTED,
             "full_pipeline_corrected": FULL_PIPELINE_CORRECTED,
+            "trial_scope_formal": TRIAL_SCOPE_FORMAL,
+            "trial_count_formal": int(overall_metrics.get("trial_count_formal", threshold_policy_trial_count(config))),
+            "feature_validation_pass": bool(overall_metrics.get("feature_validation_pass", False)),
+            "model_comparison_pass": bool(overall_metrics.get("model_comparison_pass", False)),
+            "evidence_hierarchy_pass": bool(overall_metrics.get("evidence_hierarchy_pass", False)),
+            "ranking_map_guardrails_pass": bool(overall_metrics.get("ranking_map_guardrails_pass", False)),
+            "ranking_map_guardrail_failure_reasons": str(overall_metrics.get("ranking_map_guardrail_failure_reasons", "")),
+            "robustness_pass": bool(overall_metrics.get("robustness_pass", False)),
+            "portfolio_policy_pass": bool(overall_metrics.get("portfolio_policy_pass", False)),
             "promotion_pass": bool(overall_metrics.get("promotion_pass", False)),
             "note": "No strategies generated.",
         }
@@ -5388,10 +7101,27 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--resume", action="store_true", help="Resume from last completed fold (requires same input and output_dir)")
     parser.add_argument("--enable_optuna_tuning", action="store_true", help="Enable Optuna hyperparameter tuning (run baseline first, then enable only if baseline_passed)")
     parser.add_argument("--bars_per_year", type=float, default=252 * 6.5, help="Bar frequency for Sharpe annualization (e.g. 252*6.5 for hourly US equity)")
+    parser.add_argument("--outer_train_months", type=int, default=36, help="Initial outer-train span in months")
+    parser.add_argument("--outer_test_months", type=int, default=6, help="Outer-test span in months")
+    parser.add_argument("--inner_folds", type=int, default=5, help="Number of purged inner CV folds")
     parser.add_argument("--threshold_holdout_months", type=int, default=3, help="Calendar months of purged train used as threshold holdout")
     parser.add_argument("--calibration_holdout_months", type=int, default=2, help="Calendar months of purged fit reserved for out-of-sample probability calibration")
     parser.add_argument("--random_seed", type=int, default=42, help="Primary random seed for model reproducibility")
     parser.add_argument("--seed_mode", choices=["single", "research", "final"], default="single", help="Seed robustness mode")
+    parser.add_argument("--n_jobs_tree_models", type=int, default=-1, help="Parallelism for RF/ET/LGBM models")
+    parser.add_argument("--n_jobs_xgb", type=int, default=8, help="Parallelism for XGBoost")
+    parser.add_argument("--deterministic_mode", action="store_true", help="Force single-thread canonical reproducibility mode")
+    parser.add_argument(
+        "--implementation_status",
+        choices=list(IMPLEMENTATION_STATUS_VALUES),
+        default="present",
+        help="Current implementation/verification status label to stamp into major artifacts",
+    )
+    parser.add_argument(
+        "--verification_stage_reached",
+        default="code_present",
+        help="Free-text verification stage label to stamp into major artifacts",
+    )
     return parser.parse_args()
 
 
@@ -5406,10 +7136,18 @@ def main() -> None:
         risk_per_trade=float(args.risk_per_trade),
         use_optuna_tuning=bool(args.enable_optuna_tuning),
         bars_per_year=float(getattr(args, "bars_per_year", 252 * 6.5)),
+        outer_train_months=int(getattr(args, "outer_train_months", 36)),
+        outer_test_months=int(getattr(args, "outer_test_months", 6)),
+        inner_folds=int(getattr(args, "inner_folds", 5)),
         threshold_holdout_months=int(getattr(args, "threshold_holdout_months", 3)),
         calibration_holdout_months=int(getattr(args, "calibration_holdout_months", 2)),
         random_seed=int(getattr(args, "random_seed", 42)),
         seed_mode=str(getattr(args, "seed_mode", "single")),
+        n_jobs_tree_models=int(getattr(args, "n_jobs_tree_models", -1)),
+        n_jobs_xgb=int(getattr(args, "n_jobs_xgb", 8)),
+        deterministic_mode=bool(getattr(args, "deterministic_mode", False)),
+        implementation_status=str(getattr(args, "implementation_status", "present")),
+        verification_stage_reached=str(getattr(args, "verification_stage_reached", "code_present")),
     )
     run_pipeline(config)
 

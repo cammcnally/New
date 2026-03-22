@@ -1,0 +1,69 @@
+{
+  "schema_version": "1.0.0",
+  "records": [
+    {
+      "assessment_type": "repo_hygiene_audit",
+      "status": "ACTIVE",
+      "assessed_at": "2026-03-22 20:11 AEDT",
+      "assessed_from_commit": "9e98f4d397d7d46b0b9cd4d04aaf600e59b50fa9",
+      "authority_level": "advisory",
+      "canonical_path": "docs/assessments/repo-hygiene-latest.md"
+    },
+    {
+      "assessment_type": "repo_hygiene_audit",
+      "status": "SUPERSEDED",
+      "assessed_at": "2026-03-22 00:00 AEDT",
+      "assessed_from_commit": "not-recorded-pre-lifecycle",
+      "authority_level": "advisory",
+      "canonical_path": "docs/archive/assessments/repo-hygiene/2026-03-22_0000_aedt.md"
+    },
+    {
+      "assessment_type": "verifier_assessment",
+      "status": "ACTIVE",
+      "assessed_at": "2026-03-22 20:11 AEDT",
+      "assessed_from_commit": "9e98f4d397d7d46b0b9cd4d04aaf600e59b50fa9",
+      "authority_level": "advisory",
+      "canonical_path": "docs/assessments/verifier-latest.md"
+    },
+    {
+      "assessment_type": "verifier_assessment",
+      "status": "SUPERSEDED",
+      "assessed_at": "2026-03-10 00:00 AEDT",
+      "assessed_from_commit": "not-recorded-pre-lifecycle",
+      "authority_level": "advisory",
+      "canonical_path": "docs/archive/assessments/verifier/2026-03-10_0000_aedt.md"
+    },
+    {
+      "assessment_type": "path_consistency_assessment",
+      "status": "ACTIVE",
+      "assessed_at": "2026-03-22 20:11 AEDT",
+      "assessed_from_commit": "9e98f4d397d7d46b0b9cd4d04aaf600e59b50fa9",
+      "authority_level": "advisory",
+      "canonical_path": "docs/assessments/path-consistency-latest.md"
+    },
+    {
+      "assessment_type": "path_consistency_assessment",
+      "status": "SUPERSEDED",
+      "assessed_at": "2026-03-10 00:00 AEDT",
+      "assessed_from_commit": "not-recorded-pre-lifecycle",
+      "authority_level": "advisory",
+      "canonical_path": "docs/archive/assessments/path-consistency/2026-03-10_0000_aedt.md"
+    },
+    {
+      "assessment_type": "pipeline_auditor_assessment",
+      "status": "ACTIVE",
+      "assessed_at": "2026-03-22 20:11 AEDT",
+      "assessed_from_commit": "9e98f4d397d7d46b0b9cd4d04aaf600e59b50fa9",
+      "authority_level": "advisory",
+      "canonical_path": "docs/assessments/pipeline-auditor-latest.md"
+    },
+    {
+      "assessment_type": "pipeline_auditor_assessment",
+      "status": "SUPERSEDED",
+      "assessed_at": "2025-03-10 00:00 AEDT",
+      "assessed_from_commit": "not-recorded-pre-lifecycle",
+      "authority_level": "advisory",
+      "canonical_path": "docs/archive/assessments/pipeline-auditor/2025-03-10_0000_aedt.md"
+    }
+  ]
+}

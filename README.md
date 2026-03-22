@@ -12,8 +12,8 @@ A walk-forward, purged/embargoed, probability-calibrated swing-trading research 
 ## Local automation notes
 
 - `AGENTS.md` and `tools/control_plane.py` are the canonical control-plane surfaces for local orchestration.
-- `.cursor/commands/`, `.cursor/skills/`, `.cursor/rules/`, and `.cursor/agents/` are local compatibility shims; regenerate them with `python tools/render_cursor_projection.py` after canonical policy changes.
-- `subagent/*_assessment.md` files are generated audit context and can go stale after code changes; do not treat them as authoritative runtime truth.
+- `.cursor/commands/`, `.cursor/skills/`, `.cursor/rules/`, and `.cursor/agents/` are local compatibility shims; regenerate them with `.\.venv\Scripts\python.exe tools/render_cursor_projection.py` after canonical policy changes.
+- `docs/assessments/*-latest.md` files are the canonical assessment surfaces. `docs/archive/assessments/` preserves dated history, and `subagent/*_assessment.md` remains only as redirect stubs for backward compatibility.
 - When local agent tooling is used, always prefer the explicit `--output_dir` from task context over any default example.
 
 ## Control-plane environment

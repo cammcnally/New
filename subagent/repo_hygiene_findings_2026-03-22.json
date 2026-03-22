@@ -1,0 +1,222 @@
+{
+  "audit_date": "2026-03-22",
+  "mode": "read-only",
+  "workspace": "e:\\stock_csvs_AI-Perspective\\NEW",
+  "report_path": "subagent/repo_hygiene_audit_2026-03-22.md",
+  "areas_inspected": [
+    "AGENTS.md",
+    "Pipeline.py",
+    "control_plane/*.py",
+    "tools/control_plane.py",
+    "tools/phase1_sanity_check.py",
+    "README.md",
+    "docs/phase1-research-spec.md",
+    "docs/phase1-execution-roadmap.md",
+    ".cursor/commands/phase1-change-check.md",
+    ".cursor/commands/phase1-sanity-check.md",
+    ".cursor/skills/pipeline-maintainer/SKILL.md",
+    "tests/test_control_plane_policy.py",
+    "tests/test_phase1_regression.py"
+  ],
+  "summary": {
+    "finding_count": 10,
+    "by_severity": {
+      "high": 3,
+      "medium": 4,
+      "low": 3
+    },
+    "notes": [
+      "No strong placeholder_code finding was confirmed in the primary runtime and control-plane surfaces.",
+      "The highest-risk issues are governance/runtime mismatches in Phase 1 tuning limits, roadmap drift against live artifact surfaces, and incomplete bootstrap integrity coverage."
+    ]
+  },
+  "findings": [
+    {
+      "id": "RH-001",
+      "path": "Pipeline.py",
+      "symbol_or_surface": "run_optuna_inner",
+      "category": "policy_runtime_mismatch",
+      "severity": "high",
+      "confidence": "high",
+      "evidence": "docs/phase1-research-spec.md freezes 'max wall-clock minutes per tunable model per fold: 20', but run_optuna_inner only calls study.optimize(..., n_trials=config.optuna_n_trials) for RF, ET, and XGB. No timeout or callback-based wall-clock guard is present.",
+      "why_it_matters": "The repo documents bounded Phase 1 tuning, but runtime cannot enforce the time cap. A fold can exceed the frozen governance limit silently.",
+      "recommended_action": "review",
+      "separate_followup_task": true
+    },
+    {
+      "id": "RH-002",
+      "path": "docs/phase1-execution-roadmap.md",
+      "symbol_or_surface": "stage tracker and ordered next actions",
+      "category": "drift_or_zombie_structure",
+      "severity": "high",
+      "confidence": "high",
+      "evidence": "The roadmap still marks Stage 3 and Stage 4 as pending and lists feature_validation_report.csv and model_comparison_report.csv as needed outputs. It also still lists position_ranking_audit.csv and implementation-status fields as 'still to add or review', and its ordered next actions still say to implement feature validation, scorecard defaults, cost-model schema, and model comparison. README.md, tools/phase1_sanity_check.py, and Pipeline.py already treat those surfaces as live.",
+      "why_it_matters": "This roadmap is one of the repo's Phase 1 authorities. Stale status text weakens handoff safety and can send future work back toward already-wired surfaces.",
+      "recommended_action": "review",
+      "separate_followup_task": true
+    },
+    {
+      "id": "RH-003",
+      "path": "control_plane/loader_manifest.json",
+      "symbol_or_surface": "bootstrap integrity coverage",
+      "category": "policy_runtime_mismatch",
+      "severity": "high",
+      "confidence": "high",
+      "evidence": "AGENTS.md marks control_plane/cursor_projection.py and control_plane/governance_registries.json as protected infrastructure. The loader manifest hashes only control_plane/models.py, policy_loader.py, task_state.py, codex_mcp.py, orchestrator.py, and tools/control_plane.py. tools/control_plane.py imports control_plane.cursor_projection at module import time, and policy_loader.py loads governance_registries.json during bootstrap.",
+      "why_it_matters": "The control plane claims fail-closed bootstrap integrity, but startup-relevant protected code and data sit outside the verified manifest set.",
+      "recommended_action": "review",
+      "separate_followup_task": true
+    },
+    {
+      "id": "RH-004",
+      "path": "tools/control_plane.py",
+      "symbol_or_surface": "phase1-change-check",
+      "category": "policy_runtime_mismatch",
+      "severity": "medium",
+      "confidence": "high",
+      "evidence": "The always-applied Phase 1 guardrail and .cursor/commands/phase1-change-check.md narrow Phase 1 pre-edit classification to behavior_preserving, spec_implementing, spec_changing, operational_only, or test_only. tools/control_plane.py exposes all TaskClassification values instead. The CLI also uses raw inline path matching, while control_plane/orchestrator.py uses _matches_protected_path() that normalizes slashes and trims separators.",
+      "why_it_matters": "The same control surface can accept governance-invalid classifications and can disagree about protected-path hits on Windows-style paths.",
+      "recommended_action": "review",
+      "separate_followup_task": true
+    },
+    {
+      "id": "RH-005",
+      "path": ".cursor/commands/phase1-sanity-check.md",
+      "symbol_or_surface": "required artifact list",
+      "category": "drift_or_zombie_structure",
+      "severity": "medium",
+      "confidence": "high",
+      "evidence": "The command document lists required artifacts but omits 04_strategies/strategy_scorecards.csv. tools/phase1_sanity_check.py requires strategy_scorecards.csv, and README.md lists it in the output tree.",
+      "why_it_matters": "Local users following the command doc can misread why the actual sanity checker fails.",
+      "recommended_action": "review",
+      "separate_followup_task": true
+    },
+    {
+      "id": "RH-006",
+      "path": ".cursor/skills/pipeline-maintainer/SKILL.md",
+      "symbol_or_surface": "feature-addition and artifact-sanity guidance",
+      "category": "drift_or_zombie_structure",
+      "severity": "medium",
+      "confidence": "high",
+      "evidence": "The skill tells users to consult Blueprint/feature_library_explicit_addendum.md, which is not present under Blueprint/, and it warns about stale subagent/assessment.md even though the repo uses subagent/*_assessment.md naming.",
+      "why_it_matters": "This compatibility skill points future editors to dead paths and stale artifact names, increasing workflow drift.",
+      "recommended_action": "review",
+      "separate_followup_task": true
+    },
+    {
+      "id": "RH-007",
+      "path": "Pipeline.py",
+      "symbol_or_surface": "derive_implementation_status",
+      "category": "dead_end_code",
+      "severity": "medium",
+      "confidence": "high",
+      "evidence": "derive_implementation_status() is defined, but no call sites were found in the repo. Runtime status stamping currently flows through normalize_implementation_claim() and explicit CLI/config fields instead.",
+      "why_it_matters": "This looks like a half-wired automation path for implementation-status propagation and adds maintenance surface without effect.",
+      "recommended_action": "review",
+      "separate_followup_task": true
+    },
+    {
+      "id": "RH-008",
+      "path": "control_plane/models.py",
+      "symbol_or_surface": "ActionSpec.approval and ActionSpec.sensitive",
+      "category": "unused_config_or_flag",
+      "severity": "low",
+      "confidence": "high",
+      "evidence": "ActionSpec parses approval and sensitive from AGENTS.md action specs, but RepoActionRunner.run_shell_action() only checks role and action kind before executing. No control-plane test exercises approval or sensitivity enforcement.",
+      "why_it_matters": "Action metadata currently behaves like annotation only, which can make policy enforcement look stronger than it is.",
+      "recommended_action": "review",
+      "separate_followup_task": true
+    },
+    {
+      "id": "RH-009",
+      "path": "Pipeline.py",
+      "symbol_or_surface": "build_code_fingerprint",
+      "category": "ambiguous_needs_review",
+      "severity": "low",
+      "confidence": "medium",
+      "evidence": "build_code_fingerprint() hashes Path(__file__) plus Path('docs')/phase1-research-spec.md and Path('docs')/phase1-execution-roadmap.md. If the current working directory is not the project root, those doc paths do not exist and are silently skipped. README.md and the repo rules do require running from project root, so this may be acceptable by contract.",
+      "why_it_matters": "If that contract is violated, code/resume fingerprints weaken without a warning, but it is unclear whether the repo intends to harden against that case.",
+      "recommended_action": "review",
+      "separate_followup_task": true
+    },
+    {
+      "id": "RH-010",
+      "path": "README.md",
+      "symbol_or_surface": "opening runtime description",
+      "category": "theory_not_action",
+      "severity": "low",
+      "confidence": "high",
+      "evidence": "The README opening says the pipeline trains stacked classifiers RF, ET, and XGB. Pipeline.py defines BASE_MODEL_ORDER as RF, ET, XGB, LGBM, and ENET and instantiates both LGBM and ENET base models.",
+      "why_it_matters": "The user-facing description understates the actual model stack, which can mislead audits and baseline comparisons.",
+      "recommended_action": "review",
+      "separate_followup_task": false
+    }
+  ],
+  "ambiguities_needing_human_judgment": [
+    "RH-009 may be acceptable if the project-root run contract is intentionally relied on everywhere.",
+    "The dependency-install surface is fail-closed today; it may be an intentional dormant path rather than leftover placeholder logic.",
+    "The .cursor compatibility layer appears partly hand-maintained and partly generator-backed. This audit counted only concrete stale references, not the broader projection workflow itself."
+  ],
+  "cleanup_queue": [
+    {
+      "prompt": "Reconcile the frozen Optuna wall-clock cap between docs and runtime without changing any other Phase 1 semantics.",
+      "related_findings": [
+        "RH-001"
+      ]
+    },
+    {
+      "prompt": "Refresh docs/phase1-execution-roadmap.md so its stage tracker and ordered next actions match the currently emitted runtime and test surfaces.",
+      "related_findings": [
+        "RH-002"
+      ]
+    },
+    {
+      "prompt": "Harden control-plane bootstrap integrity so every protected surface used before or during bootstrap is covered by the verified startup set.",
+      "related_findings": [
+        "RH-003"
+      ]
+    },
+    {
+      "prompt": "Reconcile the phase1-change-check workflow across .cursor guidance, tools/control_plane.py, and control_plane/orchestrator.py, including Windows path normalization.",
+      "related_findings": [
+        "RH-004"
+      ]
+    },
+    {
+      "prompt": "Refresh .cursor/commands/phase1-sanity-check.md so its required artifact list matches tools/phase1_sanity_check.py.",
+      "related_findings": [
+        "RH-005"
+      ]
+    },
+    {
+      "prompt": "Refresh .cursor/skills/pipeline-maintainer/SKILL.md so it points to live blueprint files and current subagent artifact naming.",
+      "related_findings": [
+        "RH-006"
+      ]
+    },
+    {
+      "prompt": "Decide whether to remove or wire derive_implementation_status() into artifact-status propagation.",
+      "related_findings": [
+        "RH-007"
+      ]
+    },
+    {
+      "prompt": "Decide whether AGENTS action metadata such as approval and sensitive should be enforced at runtime or documented as metadata-only.",
+      "related_findings": [
+        "RH-008"
+      ]
+    },
+    {
+      "prompt": "Decide whether build_code_fingerprint() should resolve Phase 1 docs from the project root rather than the current working directory.",
+      "related_findings": [
+        "RH-009"
+      ]
+    },
+    {
+      "prompt": "Refresh the README opening runtime description so it matches the current base-model stack.",
+      "related_findings": [
+        "RH-010"
+      ]
+    }
+  ]
+}

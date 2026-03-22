@@ -42,10 +42,10 @@ As of this checkpoint:
 - threshold-family correction is implemented for the 108 threshold tuples only
 - stitched calendar-day outer-test validation is implemented
 - WRC, DSR, occupancy, turnover, holding-period, capacity, and regime-policy fields are wired into outputs
-- resume/version fields are wired into artifacts
+- resume/version fields are wired into canonical artifacts
 - a full decision-grade end-to-end validation run has not yet been completed
-- automated tests have not yet been added
-- feature validation, model comparison, scorecard defaults, canonical reproducibility mode, and cache policy still need to be closed out
+- automated helper, regression, and artifact-sanity tests are now present; real pipeline smoke tiers and canonical reproducibility reruns are still pending
+- feature validation, model comparison, scorecard defaults, claim/status propagation, and ranking-map guardrails are implemented in runtime and artifacts; they still need end-to-end smoke and final-run validation
 
 ## Stage tracker
 
@@ -99,13 +99,15 @@ No anonymous feature should be promoted once this stage is complete.
 
 ### Stage 3 - Feature validation
 
-Status: `pending`
+Status: `mostly_done`
 
-Needed output:
+Live outputs:
 
+- `03_features/feature_validation_rows.csv`
+- `03_features/feature_validation_ic_daily_rows.csv`
 - `03_features/feature_validation_report.csv`
 
-Core checks to add:
+Live checks:
 
 - OOS cross-sectional Spearman IC
 - HAC t-stat
@@ -117,9 +119,9 @@ Core checks to add:
 
 ### Stage 4 - Model assembly
 
-Status: `pending`
+Status: `mostly_done`
 
-Needed output:
+Live output:
 
 - `04_strategies/model_comparison_report.csv`
 
@@ -144,11 +146,10 @@ Already in place:
 - lagged-liquidity capacity clipping/skipping
 - threshold candidate diagnostics
 
-Still to add or review:
+Still to review on real runs:
 
-- dedicated `position_ranking_audit.csv`
-- implementation-status / verification-stage fields in outputs
-- deterministic cache policy and canonical rerun comparisons
+- ranking-map guardrail evidence on decision-grade data
+- position-ranking audit density and operator usability
 
 ### Stage 6 - Robustness and execution realism
 
@@ -165,19 +166,19 @@ Already in place:
 - holding-period metrics
 - capacity diagnostics
 - regime-policy diagnostics
+- scorecard-default reporting
+- canonical reproducibility mode
 - promotion flags and reasons
 
 Still to add or review:
 
-- Sortino and scorecard-default reporting
 - power/sufficiency behavior of WRC on real runs
 - expected-R mapping stability on thin-support folds
 - capacity headroom and capacity-drag thresholds
-- canonical reproducibility mode
 
 ### Stage 7 - Tests
 
-Status: `pending`
+Status: `partial`
 
 Test order:
 
@@ -205,22 +206,21 @@ Minimum rule/smoke tests:
 - WRC failure suppresses promotion
 - non-positive DSR blocks promotion
 - capacity uses lagged fields only
-- canonical rerun reproduces outputs with caches disabled
+- ranking-map guardrail breaches block valid-run status
+- canonical rerun reproduces outputs under deterministic settings
 
 ## Ordered next actions
 
-1. add the remaining frozen-spec fields to docs and code paths
-2. implement feature validation, scorecard defaults, cost-model schema, and model comparison
-3. add helper, regression, and smoke tests
-4. run Tier 1 and Tier 2 smoke and only then mark `smoke_validated`
-5. run Tier 3 preproduction smoke and inspect artifact completeness
-6. run the final Phase 1 decision-grade rerun
-7. run a canonical reproducibility rerun with deterministic settings and caches disabled
-8. only if Phase 1 is stable and refactoring would materially improve diagnosis or safe extension, consider a Phase 2 auditability refactor
+1. run Tier 1 and Tier 2 smoke and only then mark `smoke_validated`
+2. run Tier 3 preproduction smoke and inspect artifact completeness
+3. run the final Phase 1 decision-grade rerun
+4. run a canonical reproducibility rerun with deterministic settings
+5. inspect ranking-map guardrail evidence and WRC power on real-run artifacts
+6. only if Phase 1 is stable and refactoring would materially improve diagnosis or safe extension, consider a Phase 2 auditability refactor
 
 ## Smoke ladder
 
-`pipeline_outputs_smoke` is overwrite-oriented and should be cleared before each tier.
+The smoke `output_dir` is overwrite-oriented and should be cleared before each tier.
 
 ### Tier 1 - plumbing
 
@@ -268,7 +268,6 @@ Minimum rule/smoke tests:
 
 - same data scope as final run
 - deterministic single-thread settings
-- caches cleared and disabled
 
 ## Definition of Phase 1 completion
 

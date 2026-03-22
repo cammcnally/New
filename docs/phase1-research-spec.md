@@ -214,6 +214,14 @@ Rules:
   - maximum fallback-usage fraction per fold: `0.25`
   - top 2 buckets positive fraction must be at least `0.60`
 
+Runtime enforcement rules:
+
+- record the observed fallback-usage fraction and its maximum allowed value in run artifacts
+- record the observed adjacent-fold Spearman and its minimum required value in run artifacts whenever an adjacent comparison is available
+- if fallback-usage fraction exceeds its maximum, the run is not valid
+- if an adjacent-fold Spearman comparison is available and falls below its minimum, the run is not valid
+- ranking-map guardrail failures must flow into run-validity reporting; do not treat a breached guardrail as informational only
+
 ## Frozen promotion hierarchy
 
 Final promotion is hierarchical.
@@ -246,13 +254,13 @@ Implementation realism remains part of the must-pass path:
 
 Final decision:
 
-- `promotion_pass = robustness_pass AND portfolio_policy_pass`
+- `promotion_pass = feature_validation_pass AND model_comparison_pass AND robustness_pass AND portfolio_policy_pass`
 
 ## Evidence hierarchy
 
 - `feature_validation_pass` is necessary, not sufficient
 - `model_comparison_pass` is necessary, not sufficient
-- only strategy-level stitched OOS results determine `promotion_pass`
+- only strategy-level stitched OOS results can finalize `promotion_pass` after feature-validation and model-comparison prerequisites are met
 
 ## Fold-threshold defaults
 
@@ -339,8 +347,6 @@ Canonical reproducibility verification requires:
 - `random_seed = 42`
 - single-seed mode
 - single-thread execution for canonical reruns
-- caches cleared before canonical run
-- caches disabled for the canonical rerun
 
 Comparison tolerances:
 
@@ -350,20 +356,6 @@ Comparison tolerances:
 - time-series absolute tolerance: `1e-8`
 
 Do not claim `reproducible_verified` if canonical settings were not used.
-
-## Cache policy
-
-- cache scope: run-local only
-- cache location: `output_dir/cache/`
-- cache keys must include:
-  - input-data hash
-  - code fingerprint
-  - schema version
-  - robustness-method version
-  - search-family-definition version
-  - config hash
-- canonical outputs must reproduce with caches cleared
-- caches must never be required to generate canonical outputs
 
 ## Frozen claim boundary
 

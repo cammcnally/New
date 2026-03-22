@@ -1,0 +1,274 @@
+{
+  "schema_version": "1.0.0",
+  "python": {
+    "min": "3.12.10",
+    "max_exclusive": "3.13.0"
+  },
+  "invariants": {
+    "trial_count_formal": 108,
+    "threshold_search_corrected": true,
+    "full_pipeline_corrected": false,
+    "ranking_map_guardrails_pass": true
+  },
+  "legacy_surfaces": {
+    "resume_state": "resume_state.json",
+    "pipeline_log": "pipeline.log"
+  },
+  "report_sections": [
+    "## Capacity",
+    "## Correction Flags",
+    "## Trial Definition",
+    "## Ranking Map Guardrails",
+    "## Promotion Decision"
+  ],
+  "artifacts": {
+    "overall_metrics": {
+      "relative_path": "02_metrics/overall_metrics.json",
+      "type": "json",
+      "required_keys": [
+        "schema_version",
+        "robustness_method_version",
+        "search_family_definition_version",
+        "implementation_status",
+        "verification_stage_reached",
+        "threshold_search_corrected",
+        "full_pipeline_corrected",
+        "trial_scope_formal",
+        "trial_count_formal",
+        "deflated_sharpe_daily",
+        "ranking_map_guardrails_pass",
+        "ranking_map_guardrail_failure_reasons",
+        "ranking_map_max_fallback_usage_fraction_allowed",
+        "ranking_map_min_adjacent_fold_spearman_allowed",
+        "ranking_map_fallback_usage_fraction_observed_max_threshold_holdout",
+        "ranking_map_fallback_usage_fraction_observed_max_test",
+        "ranking_map_adjacent_fold_spearman_observed_min_threshold_holdout",
+        "ranking_map_adjacent_fold_spearman_observed_min_test",
+        "promotion_pass",
+        "feature_validation_pass",
+        "model_comparison_pass",
+        "research_viable",
+        "live_pilot_viable",
+        "allocation_ready",
+        "stitched_daily_total_return",
+        "stitched_daily_mdd",
+        "stitched_daily_calmar"
+      ],
+      "required_values": {
+        "trial_count_formal": 108,
+        "threshold_search_corrected": true,
+        "full_pipeline_corrected": false,
+        "ranking_map_guardrails_pass": true
+      }
+    },
+    "fold_metrics": {
+      "relative_path": "02_metrics/fold_metrics.csv",
+      "type": "csv",
+      "required_columns": [
+        "schema_version",
+        "robustness_method_version",
+        "search_family_definition_version",
+        "threshold_search_corrected",
+        "full_pipeline_corrected",
+        "trial_scope_formal",
+        "trial_count_formal",
+        "wrc_status",
+        "wrc_pvalue",
+        "fold_selected",
+        "fold_skip_reason",
+        "ranking_map_max_fallback_usage_fraction_allowed",
+        "ranking_map_min_adjacent_fold_spearman_allowed",
+        "ranking_map_bucket_positive_rates_threshold_holdout",
+        "ranking_map_bucket_positive_rates_test",
+        "ranking_map_fallback_usage_fraction_threshold_holdout",
+        "ranking_map_fallback_usage_fraction_test",
+        "ranking_map_adjacent_fold_spearman_threshold_holdout",
+        "ranking_map_adjacent_fold_spearman_test",
+        "ranking_map_adjacent_fold_spearman_evaluable_threshold_holdout",
+        "ranking_map_adjacent_fold_spearman_evaluable_test",
+        "ranking_map_guardrails_pass_threshold_holdout",
+        "ranking_map_guardrails_pass_test",
+        "ranking_map_guardrail_failure_reasons_threshold_holdout",
+        "ranking_map_guardrail_failure_reasons_test",
+        "adjusted_sharpe_daily"
+      ]
+    },
+    "threshold_candidate_diagnostics": {
+      "relative_path": "02_metrics/threshold_candidate_diagnostics.csv",
+      "type": "csv",
+      "required_columns": [
+        "schema_version",
+        "robustness_method_version",
+        "search_family_definition_version",
+        "implementation_status",
+        "verification_stage_reached",
+        "threshold_search_corrected",
+        "full_pipeline_corrected",
+        "trial_scope_formal",
+        "trial_count_formal",
+        "wrc_status",
+        "wrc_pvalue",
+        "adjusted_sharpe_daily"
+      ]
+    },
+    "policy_daily_returns": {
+      "relative_path": "02_metrics/policy_daily_returns.csv",
+      "type": "csv",
+      "required_columns": [
+        "session_date_ny",
+        "daily_return",
+        "fold",
+        "fold_selected",
+        "fold_skip_reason",
+        "schema_version",
+        "robustness_method_version",
+        "search_family_definition_version",
+        "implementation_status",
+        "verification_stage_reached",
+        "threshold_search_corrected",
+        "full_pipeline_corrected",
+        "trial_scope_formal",
+        "trial_count_formal"
+      ]
+    },
+    "feature_validation_report": {
+      "relative_path": "03_features/feature_validation_report.csv",
+      "type": "csv",
+      "required_columns": [
+        "feature",
+        "feature_validation_pass",
+        "schema_version",
+        "robustness_method_version",
+        "search_family_definition_version",
+        "implementation_status",
+        "verification_stage_reached",
+        "threshold_search_corrected",
+        "full_pipeline_corrected",
+        "trial_scope_formal",
+        "trial_count_formal"
+      ]
+    },
+    "best_strategy_summary": {
+      "relative_path": "04_strategies/best_strategy_summary.json",
+      "type": "json",
+      "required_keys": [
+        "schema_version",
+        "robustness_method_version",
+        "search_family_definition_version",
+        "implementation_status",
+        "verification_stage_reached",
+        "threshold_search_corrected",
+        "full_pipeline_corrected",
+        "trial_scope_formal",
+        "trial_count_formal",
+        "deflated_sharpe_daily",
+        "ranking_map_guardrails_pass",
+        "ranking_map_guardrail_failure_reasons",
+        "promotion_pass",
+        "feature_validation_pass",
+        "model_comparison_pass",
+        "research_viable",
+        "live_pilot_viable",
+        "allocation_ready"
+      ],
+      "required_values": {
+        "trial_count_formal": 108,
+        "threshold_search_corrected": true,
+        "full_pipeline_corrected": false,
+        "ranking_map_guardrails_pass": true
+      }
+    },
+    "model_comparison_report": {
+      "relative_path": "04_strategies/model_comparison_report.csv",
+      "type": "csv",
+      "required_columns": [
+        "model_name",
+        "model_comparison_pass",
+        "schema_version",
+        "robustness_method_version",
+        "search_family_definition_version",
+        "implementation_status",
+        "verification_stage_reached",
+        "threshold_search_corrected",
+        "full_pipeline_corrected",
+        "trial_scope_formal",
+        "trial_count_formal"
+      ]
+    },
+    "position_ranking_audit": {
+      "relative_path": "04_strategies/position_ranking_audit.csv",
+      "type": "csv",
+      "required_columns": [
+        "fold",
+        "timestamp_utc",
+        "ticker",
+        "decision",
+        "max_concurrent",
+        "p_cal",
+        "p_empirical",
+        "ev_empirical_r",
+        "cost_est_r",
+        "signal_dollar_volume",
+        "signal_adv_dollar_20",
+        "schema_version",
+        "robustness_method_version",
+        "search_family_definition_version",
+        "implementation_status",
+        "verification_stage_reached",
+        "threshold_search_corrected",
+        "full_pipeline_corrected",
+        "trial_scope_formal",
+        "trial_count_formal"
+      ]
+    },
+    "strategy_scorecards": {
+      "relative_path": "04_strategies/strategy_scorecards.csv",
+      "type": "csv",
+      "required_columns": [
+        "promotion_pass",
+        "feature_validation_pass",
+        "model_comparison_pass",
+        "evidence_hierarchy_pass",
+        "ranking_map_guardrails_pass",
+        "schema_version",
+        "robustness_method_version",
+        "search_family_definition_version",
+        "implementation_status",
+        "verification_stage_reached",
+        "threshold_search_corrected",
+        "full_pipeline_corrected",
+        "trial_scope_formal",
+        "trial_count_formal"
+      ]
+    },
+    "final_report": {
+      "relative_path": "05_reports/final_report.md",
+      "type": "markdown",
+      "required_sections": [
+        "## Capacity",
+        "## Correction Flags",
+        "## Trial Definition",
+        "## Ranking Map Guardrails",
+        "## Promotion Decision"
+      ]
+    },
+    "resume_state": {
+      "relative_path": "06_state/resume_state.json",
+      "type": "json",
+      "required_keys": [
+        "schema_version",
+        "robustness_method_version",
+        "search_family_definition_version",
+        "threshold_search_corrected",
+        "full_pipeline_corrected",
+        "trial_scope_formal",
+        "trial_count_formal",
+        "implementation_status",
+        "verification_stage_reached",
+        "resume_fingerprint",
+        "last_completed_fold",
+        "completed_fold_names"
+      ]
+    }
+  }
+}

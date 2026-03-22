@@ -1,3 +1,19 @@
 {
-    "chatgpt.openOnStartup": false
+    "chatgpt.openOnStartup": false,
+    "python.defaultInterpreterPath": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+    "python.terminal.activateEnvironment": true,
+    "terminal.integrated.env.windows": {
+        "PATH": "${workspaceFolder}\\.venv\\Scripts;${env:PATH}",
+        "PIP_CONFIG_FILE": "${workspaceFolder}\\.local\\pip\\pip.ini",
+        "PIP_CACHE_DIR": "E:\\stock_csvs_AI-Perspective\\caches\\pip",
+        "PYTHONUSERBASE": "${workspaceFolder}\\.local\\python-user",
+        "TEMP": "E:\\stock_csvs_AI-Perspective\\caches\\temp",
+        "TMP": "E:\\stock_csvs_AI-Perspective\\caches\\temp",
+        "TMPDIR": "E:\\stock_csvs_AI-Perspective\\caches\\temp",
+        "XDG_CACHE_HOME": "E:\\stock_csvs_AI-Perspective\\caches",
+        "PLAYWRIGHT_BROWSERS_PATH": "E:\\stock_csvs_AI-Perspective\\caches\\ms-playwright",
+        "UV_CACHE_DIR": "E:\\stock_csvs_AI-Perspective\\caches\\uv",
+        "POETRY_CACHE_DIR": "E:\\stock_csvs_AI-Perspective\\caches\\pypoetry",
+        "NPM_CONFIG_CACHE": "E:\\stock_csvs_AI-Perspective\\caches\\npm"
+    }
 }

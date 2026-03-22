@@ -28,7 +28,7 @@ Non-negotiable builder rules:
 ### 2. pipeline-auditor (`.cursor/agents/pipeline-auditor.md`)
 Purpose:
 - audit chronology integrity, leakage, calibration, threshold lineage, IC lineage, portfolio logic, seed sensitivity, and output hygiene
-- write `subagent/pipeline-auditor_assessment.md`
+- write `docs/assessments/pipeline-auditor-latest.md`
 
 Required auditor behaviors:
 - chronology-first
@@ -60,8 +60,8 @@ This rule should state, in substance:
 - audit chronology and lineage before findings
 - threshold-selection lineage and calibration lineage must always be traced
 - distinguish confirmed defects from design tradeoffs and engineering weaknesses
-- write report to `subagent/pipeline-auditor_assessment.md`
-- overwrite that report fully on each regeneration
+- write report to `docs/assessments/pipeline-auditor-latest.md`
+- archive the previous latest copy under `docs/archive/assessments/pipeline-auditor/` before overwriting
 - include concerns checked and not confirmed
 - explicitly check seed robustness, IC logic, and train-only transformation compliance
 
@@ -78,7 +78,7 @@ This command should tell Cursor to:
 ### audit-pipeline
 This command should tell Cursor to:
 1. invoke `pipeline-auditor`
-2. regenerate `subagent/pipeline-auditor_assessment.md`
+2. regenerate `docs/assessments/pipeline-auditor-latest.md`
 3. fully overwrite prior contents
 4. verify the file exists
 5. fail loudly if the audit output was not written
@@ -86,8 +86,8 @@ This command should tell Cursor to:
 ## Audit report overwrite instruction
 
 The audit subagent must be told explicitly:
-- always write the final report to exactly: `subagent/pipeline-auditor_assessment.md`
-- if it exists, overwrite it completely
+- always write the final report to exactly: `docs/assessments/pipeline-auditor-latest.md`
+- if it exists, archive the previous latest copy before overwriting
 - do not append
 - do not create versioned variants unless explicitly asked
 
@@ -104,4 +104,4 @@ No elaborate hook system is required.
 
 ## Section B — Legacy clarifications & context
 
-**Output-overwrite instruction for audit report** (from original): The audit subagent must always write the final report to exactly `subagent/pipeline-auditor_assessment.md`; if it exists, overwrite it completely; do not append; do not create `assessment_v2.md` or similar unless explicitly asked.
+**Output-overwrite instruction for audit report** (updated): The audit subagent must always write the final report to exactly `docs/assessments/pipeline-auditor-latest.md`; archive the previous latest copy under `docs/archive/assessments/pipeline-auditor/`; do not append; do not create `assessment_v2.md` or similar unless explicitly asked.
