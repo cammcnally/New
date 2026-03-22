@@ -1,0 +1,15 @@
+{
+  "files": {
+    "control_plane/codex_mcp.py": "2f57a253399c8b962638501f40b5537a4cde4027969322f3784df6505a81b703",
+    "control_plane/cursor_projection.py": "a3f0a20133ac52581f5b551aecebc5fedd9455775fcb95adb5f2edf55d3cc70c",
+    "control_plane/governance_registries.json": "393c03ac8e9285b31493e14e531bde63aea867a9860dea1d58be3b253ec6e7b4",
+    "control_plane/models.py": "0aa40f3f23f017a7c49c48eeac2a3974de20f99408fab5594c7954a091e6eca2",
+    "control_plane/orchestrator.py": "d6e07d1be0f05065f10678a8268599580db9406d412aa264818b860591431721",
+    "control_plane/policy_loader.py": "6098e186553aade2f0c012ab9d62a039a3ad7df195e0fd0a353706aefc9f1412",
+    "control_plane/runtime_env.py": "160c5c0e0a266189889e70dfe0a688f50da543861aa761e70323c85bba5a46f4",
+    "control_plane/task_state.py": "0a376227bbdd5520e5de7377f69e80b48507409f048ca5da71b754bd524e41d1",
+    "tools/control_plane.py": "7cb2f536d1a895c2c8aceab769fdf89d5a47ccc50d21ee11096ac24136af6abf",
+    "tools/migrate_repo_env.py": "a85b9bee29d25a730a6a53d3c91465d70dc887196885e007623f853c56536f15",
+    "tools/render_cursor_projection.py": "d49be7a8a4d7c37fdf06873bc51a28f88f52d8be4918b9473e89ebbd914dca7e"
+  }
+}

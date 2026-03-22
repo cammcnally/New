@@ -1,0 +1,150 @@
+{
+  "agents": {
+    "Coordinator": {
+      "approval_scope": "auto_approved_by_policy",
+      "eval_status": "baseline",
+      "owner": "control-plane",
+      "purpose": "Task decomposition and policy enforcement",
+      "risk_tier": "high"
+    },
+    "Builder": {
+      "approval_scope": "requires_verifier",
+      "eval_status": "pending",
+      "owner": "control-plane",
+      "purpose": "Repository implementation",
+      "risk_tier": "high"
+    },
+    "Runner": {
+      "approval_scope": "auto_approved_by_policy",
+      "eval_status": "pending",
+      "owner": "control-plane",
+      "purpose": "Approved command execution",
+      "risk_tier": "medium"
+    },
+    "Watcher": {
+      "approval_scope": "requires_verifier",
+      "eval_status": "pending",
+      "owner": "control-plane",
+      "purpose": "Operational recovery",
+      "risk_tier": "high"
+    },
+    "Verifier": {
+      "approval_scope": "auto_approved_by_policy",
+      "eval_status": "baseline",
+      "owner": "control-plane",
+      "purpose": "Validation gate",
+      "risk_tier": "high"
+    },
+    "Auditor": {
+      "approval_scope": "requires_auditor",
+      "eval_status": "pending",
+      "owner": "control-plane",
+      "purpose": "Read-only policy and quality audit",
+      "risk_tier": "medium"
+    },
+    "CookbookAssessor": {
+      "approval_scope": "auto_approved_by_policy",
+      "eval_status": "pending",
+      "owner": "control-plane",
+      "purpose": "Selective cookbook assessment",
+      "risk_tier": "low"
+    },
+    "DependencyAgent": {
+      "approval_scope": "requires_human",
+      "eval_status": "baseline",
+      "owner": "control-plane",
+      "purpose": "Bounded dependency proposal/install",
+      "risk_tier": "high"
+    }
+  },
+  "graders": {
+    "verifier-after-writes": {
+      "approval_scope": "auto_approved_by_policy",
+      "eval_status": "baseline",
+      "owner": "control-plane",
+      "purpose": "Checks verifier runs after sensitive writes",
+      "risk_tier": "medium"
+    },
+    "cursor-shim-parity": {
+      "approval_scope": "auto_approved_by_policy",
+      "eval_status": "baseline",
+      "owner": "control-plane",
+      "purpose": "Checks local .cursor compatibility shims stay aligned with AGENTS.md",
+      "risk_tier": "medium"
+    },
+    "resume-invariants": {
+      "approval_scope": "auto_approved_by_policy",
+      "eval_status": "pending",
+      "owner": "control-plane",
+      "purpose": "Checks watcher preserves identical resume args",
+      "risk_tier": "medium"
+    },
+    "task-artifact-integrity": {
+      "approval_scope": "auto_approved_by_policy",
+      "eval_status": "baseline",
+      "owner": "control-plane",
+      "purpose": "Checks task manifests, terminal states, and durable artifacts remain coherent",
+      "risk_tier": "high"
+    }
+  },
+  "skills": {
+    "validation-runbook": {
+      "approval_scope": "auto_approved_by_policy",
+      "eval_status": "existing",
+      "owner": "cursor-compat",
+      "purpose": "Decision-grade validation workflow",
+      "risk_tier": "medium"
+    },
+    "test-authoring": {
+      "approval_scope": "auto_approved_by_policy",
+      "eval_status": "existing",
+      "owner": "cursor-compat",
+      "purpose": "Test authoring workflow",
+      "risk_tier": "medium"
+    },
+    "artifact-sanity-check": {
+      "approval_scope": "auto_approved_by_policy",
+      "eval_status": "existing",
+      "owner": "cursor-compat",
+      "purpose": "Artifact validation workflow",
+      "risk_tier": "medium"
+    }
+  },
+  "tools": {
+    "codex-local": {
+      "approval_scope": "auto_approved_by_policy",
+      "eval_status": "baseline",
+      "owner": "control-plane",
+      "purpose": "Local Codex MCP server",
+      "risk_tier": "high"
+    },
+    "repo-action-runner": {
+      "approval_scope": "auto_approved_by_policy",
+      "eval_status": "baseline",
+      "owner": "control-plane",
+      "purpose": "Approved shell action runner",
+      "risk_tier": "high"
+    },
+    "cursor-projection": {
+      "approval_scope": "auto_approved_by_policy",
+      "eval_status": "baseline",
+      "owner": "control-plane",
+      "purpose": "Renders local .cursor compatibility shims from canonical policy",
+      "risk_tier": "medium"
+    },
+    "runtime-env-loader": {
+      "approval_scope": "auto_approved_by_policy",
+      "eval_status": "baseline",
+      "owner": "control-plane",
+      "purpose": "Validates the repo .venv and loads the allowlisted Codex API key into process memory",
+      "risk_tier": "high"
+    },
+    "repo-env-migration": {
+      "approval_scope": "requires_human",
+      "eval_status": "pending",
+      "owner": "control-plane",
+      "purpose": "Optional utility for migrating repo-local secrets out of .env when policy changes allow it",
+      "risk_tier": "high"
+    }
+  }
+}

@@ -46,7 +46,7 @@ The task is complete only if Cursor produces an **end-to-end runnable implementa
    Reference schema for the implemented feature registry.
 
 8. **Subagents and rules**  
-   Cursor-native files live in `.cursor/agents/` (pipeline-builder, pipeline-auditor) and `.cursor/rules/` (pipeline-research-standards, pipeline-auditor-behavior). Keep them aligned with the canonical docs above. **Operational extensions** (pipeline-watcher, verifier) run automatically: pipeline-watcher on pipeline failure, verifier after code edits.
+   Cursor-native files live in `.cursor/agents/` and `.cursor/rules/` as local compatibility shims. The canonical authority lives in `AGENTS.md`, the Phase 1 docs, and the control-plane runtime. Keep the local Cursor layer aligned by regenerating it from tracked repo sources. **Operational extensions** (pipeline-watcher, verifier) remain automatic: pipeline-watcher on pipeline failure, verifier after code edits.
 
 ### Build philosophy
 
@@ -63,7 +63,7 @@ The task is complete only if Cursor produces an **end-to-end runnable implementa
 
 1. Give **01_MASTER_CURSOR_PROMPT.md** to Cursor Composer.
 2. If Cursor needs more precision, feed **02** through **06** in order.
-3. Subagents and rules live in `.cursor/agents/` and `.cursor/rules/`; they are versioned with the repo.
+3. Subagents and rules may appear in `.cursor/agents/` and `.cursor/rules/` for local Cursor ergonomics, but they are compatibility projections rather than canonical repo policy.
 4. Reject any implementation that uses placeholders, random metrics, or fake completeness.
 
 ---
@@ -71,5 +71,5 @@ The task is complete only if Cursor produces an **end-to-end runnable implementa
 ## Section B — Legacy clarifications & context
 
 - The original bundle described this as a **single-file, feature-discovery and strategy-library trading pipeline** with a **strict output policy that avoids file explosion**. The hardened spec above encodes these goals.
-- The original referenced **templates/** for ready-to-use Cursor subagent/rule/command templates. Cursor-native files now live in `.cursor/agents/` and `.cursor/rules/` at the repo root.
+- The original referenced **templates/** for ready-to-use Cursor subagent/rule/command templates. Cursor-native files may still be rendered into `.cursor/` locally, but the canonical control-plane policy now lives in tracked repo files.
 - **Design intent** (from original): Keep file creation clean and overwrite-oriented; preserve resume/checkpointing; build a feature-discovery workflow, not just raw importance dumps; produce a ranked strategy library; produce a human-readable final report; use walk-forward, out-of-sample, event-safe validation.
