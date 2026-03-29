@@ -1,0 +1,2 @@
+# Optional config variable substitutions for great_expectations.yml (local / secrets).
+{}

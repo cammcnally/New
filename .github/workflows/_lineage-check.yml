@@ -1,0 +1,23 @@
+name: Lineage Structure Check
+
+on:
+  workflow_call:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+      - run: uv sync --group dev --group control-plane --group lineage
+      - name: Verify lineage module imports
+        run: |
+          uv run python -c "
+          from lineage import PipelineLineageEmitter
+          emitter = PipelineLineageEmitter(transport='file', output_dir='/tmp/lineage_test')
+          print('Lineage emitter initialized successfully.')
+          "
+      - name: Run lineage tests
+        run: uv run python -m pytest lineage/tests -q --tb=short

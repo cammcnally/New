@@ -1,0 +1,74 @@
+{
+  "phase1_change_check": {
+    "kind": "internal",
+    "allowed_roles": ["Coordinator"],
+    "approval": "auto_approved_by_policy",
+    "sensitive": true
+  },
+  "run_pipeline": {
+    "kind": "shell_template",
+    "command": ["python", "Pipeline.py", "--input_panel_csv", "{input_panel_csv}", "--output_dir", "{output_dir}"],
+    "allowed_roles": ["Runner"],
+    "approval": "auto_approved_by_policy",
+    "sensitive": true,
+    "timeout_seconds": 3600
+  },
+  "resume_pipeline": {
+    "kind": "shell_template",
+    "command": ["python", "Pipeline.py", "--input_panel_csv", "{input_panel_csv}", "--output_dir", "{output_dir}", "--resume"],
+    "allowed_roles": ["Runner", "Watcher"],
+    "approval": "auto_approved_by_policy",
+    "sensitive": true,
+    "timeout_seconds": 3600
+  },
+  "run_tests_all": {
+    "kind": "shell_template",
+    "command": ["python", "-m", "pytest", "-q"],
+    "allowed_roles": ["Runner", "Verifier"],
+    "approval": "auto_approved_by_policy",
+    "sensitive": false,
+    "timeout_seconds": 1800
+  },
+  "run_tests_marker": {
+    "kind": "shell_template",
+    "command": ["python", "-m", "pytest", "-m", "{marker}"],
+    "allowed_roles": ["Runner", "Verifier"],
+    "approval": "auto_approved_by_policy",
+    "sensitive": false,
+    "timeout_seconds": 1800
+  },
+  "run_tests_scoped": {
+    "kind": "shell_template",
+    "command": ["python", "-m", "pytest", "-q", "{paths}"],
+    "allowed_roles": ["Runner", "Verifier"],
+    "approval": "auto_approved_by_policy",
+    "sensitive": false,
+    "timeout_seconds": 1800
+  },
+  "phase1_sanity_check": {
+    "kind": "shell_template",
+    "command": ["python", "tools/phase1_sanity_check.py", "--output_dir", "{output_dir}"],
+    "allowed_roles": ["Runner", "Verifier"],
+    "approval": "auto_approved_by_policy",
+    "sensitive": true,
+    "timeout_seconds": 1200
+  },
+  "read_pipeline_log": {
+    "kind": "internal",
+    "allowed_roles": ["Runner", "Watcher", "Verifier", "Auditor"],
+    "approval": "auto_approved_by_policy",
+    "sensitive": true
+  },
+  "audit_pipeline": {
+    "kind": "internal",
+    "allowed_roles": ["Auditor"],
+    "approval": "requires_auditor",
+    "sensitive": true
+  },
+  "build_feature_discovery_pipeline": {
+    "kind": "internal",
+    "allowed_roles": ["Builder"],
+    "approval": "requires_verifier",
+    "sensitive": true
+  }
+}

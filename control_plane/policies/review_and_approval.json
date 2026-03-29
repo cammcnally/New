@@ -1,0 +1,24 @@
+{
+  "structured_review": {
+    "required_dimensions": [
+      "correctness_review",
+      "regression_risk_review",
+      "unsupported_claim_review",
+      "unsafe_command_pattern_review"
+    ]
+  },
+  "delegation_data_classes": [
+    "public_safe",
+    "repo_internal_non_sensitive",
+    "sensitive_local_only",
+    "secrets_never_export"
+  ],
+  "approval_policy": {
+    "root": ".local/control_plane/approvals",
+    "append_only": true
+  },
+  "verifier_store": {
+    "root": ".local/control_plane/verifier_runs",
+    "task_workspace_is_reference_only": true
+  }
+}

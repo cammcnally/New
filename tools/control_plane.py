@@ -134,7 +134,11 @@ def cmd_list_codex_tools(_: argparse.Namespace) -> int:
 def cmd_phase1_change_check(args: argparse.Namespace) -> int:
     policy = _load_policy(require_external_pin=True, require_runtime_env=False)
     classification = TaskClassification(args.classification)
-    protected_paths = [str(item) for item in policy.protected_infrastructure.get("paths", [])]
+    infra = policy.protected_infrastructure
+    flat = infra.get("paths", [])
+    if not flat:
+        flat = list(infra.get("control_plane_paths", [])) + list(infra.get("phase1_authority_paths", []))
+    protected_paths = [str(p) for p in flat]
     expected_files = list(args.expected_file)
     if not expected_files:
         expected_files = _collect_repo_changes()

@@ -1,8 +1,8 @@
 {
   "generated_by": "tools/refresh_loader_manifest.py",
   "files": {
-    "AGENTS.md": "76d7853d812bf5cef22c68736e1803c8bec338a32541eb176d8a74d46ab617b1",
-    "control_plane/models.py": "0aa40f3f23f017a7c49c48eeac2a3974de20f99408fab5594c7954a091e6eca2",
+    "AGENTS.md": "1466abd07a912c5b22e2e1372cb70b440f44dd198ed53dfcdd90a0e022d44348",
+    "control_plane/models.py": "25111f87cbfd8737dbe0c2e1cd2b0fc07e73d2d45236412af68dc71d81e68412",
     "control_plane/task_state.py": "1ea4bac9df129ee5f6fab8d0b6675d572db05298b9b240b79b4fa50499b6340b",
     "control_plane/codex_mcp.py": "2f57a253399c8b962638501f40b5537a4cde4027969322f3784df6505a81b703",
     "control_plane/orchestrator.py": "33408226c26783aaf585482c134ccafee0553a6f0378104231a695ef2b53395d",
@@ -11,7 +11,7 @@
     "control_plane/governance_registries.json": "393c03ac8e9285b31493e14e531bde63aea867a9860dea1d58be3b253ec6e7b4",
     "control_plane/cursor_projection.py": "1ef150370266fb1a4caabae15d06a5f23ee034c137d2deb6007aadb5260fba80",
     "tools/control_plane.py": "f58be343deb562b543492b0b91062ddec5181d1387214506d673eaa28cd4635a",
-    "tools/render_cursor_projection.py": "f82e25923e47bb275495c2715967db1e470213a6857abd411353fed49fceb484",
+    "tools/render_cursor_projection.py": "25c4548c571ab0202c35b1470fce406d5378697dbac25f11bcdd4cc25b004e3d",
     "tools/migrate_repo_env.py": "a85b9bee29d25a730a6a53d3c91465d70dc887196885e007623f853c56536f15"
   }
 }

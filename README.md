@@ -25,6 +25,8 @@ The canonical governance sources for this repo are:
 
 The README is descriptive. The Phase 1 docs are normative for research semantics. If code and these docs disagree, the docs win until the change is intentionally made and documented.
 
+**Platform authority:** Linux CI is the canonical release authority. Windows may be used for development. WSL is the preferred local parity environment for agent-driven work and final testing.
+
 This repo is intentionally narrower than a full data-platform rebuild. It currently focuses on:
 
 - a single research pipeline
@@ -76,18 +78,178 @@ Phase 1 also freezes the current statistical language:
 
 If you want to change any of those meanings, the docs must be updated first.
 
-## Current Implementation Snapshot
+## Repository Structure
 
-As of the current repo state:
+```
+swing-pipeline/
+├── Pipeline.py                          # Main research pipeline (~7,200 lines)
+├── AGENTS.md                            # Canonical policy, agent registry, autonomy contract
+├── README.md                            # This file
+├── PLANS.md                             # Execution plans for multi-step work
+├── pyproject.toml                       # Python project config with dependency groups
+├── uv.lock                             # Deterministic dependency lockfile (218 packages)
+├── .python-version                      # Pinned Python 3.11.9
+├── dvc.yaml                             # DVC pipeline stages (train, evaluate)
+├── Makefile                             # Build targets: sync, test, verify, regenerate
+├── pytest.ini                           # Test configuration (markers: helper, regression, smoke)
+├── panel_ohlcv_clean.csv                # Primary OHLCV panel data (LFS-tracked, ~351k rows)
+├── panel_ohlcv_smoke_tier1.csv          # Smaller smoke-test panel
+├── package.json / package-lock.json     # Node deps (Codex SDK)
+├── .gitattributes                       # LFS tracking rules
+├── .gitignore                           # Ignore patterns
+│
+├── control_plane/                       # Custom governance and orchestration runtime
+│   ├── models.py                        #   Policy, agent, action data models + LoadedPolicy
+│   ├── policy_loader.py                 #   AGENTS.md JSON parser + bootstrap validation
+│   ├── orchestrator.py                  #   Task routing, role enforcement, action execution
+│   ├── task_state.py                    #   Task workspace scaffold and state management
+│   ├── codex_mcp.py                     #   Codex MCP backend integration
+│   ├── runtime_env.py                   #   Python version and venv validation
+│   ├── cursor_projection.py             #   .cursor/* generation from AGENTS.md
+│   ├── loader_manifest.json             #   SHA256 integrity hashes for control-plane files
+│   ├── governance_registries.json       #   Agent/tool/grader metadata for orchestrator
+│   ├── phase1_contract.json             #   Phase 1 artifact schema and validation rules
+│   ├── assessment_registry.json         #   Assessment tracking metadata
+│   └── policies/                        #   Extracted supplementary policy configs
+│       ├── action_registry.json         #     Pipeline/test/audit action definitions
+│       ├── task_scaffolding.json        #     Task workspace file requirements
+│       ├── trace_security.json          #     Trace capture and redaction settings
+│       ├── cloud_delegation.json        #     Cloud vs local execution rules
+│       ├── review_and_approval.json     #     Structured review, approval, verifier config
+│       ├── cookbook_policy.json          #     External cookbook idea screening gates
+│       └── execplan_policy.json         #     Execution plan requirements
+│
+├── dagster_pipeline/                    # Dagster asset layer (wraps Pipeline.py functions)
+│   ├── definitions.py                   #   Dagster Definitions entry point
+│   ├── resources.py                     #   PipelineConfigResource (mirrors PipelineConfig)
+│   └── assets/                          #   One asset per pipeline stage
+│       ├── ingestion.py                 #     load_panel + verify_panel
+│       ├── features.py                  #     build_feature_matrix
+│       ├── labeling.py                  #     label_long_events + filtering
+│       ├── training.py                  #     build_outer_folds + fit_outer_fold loop
+│       ├── evaluation.py                #     Aggregate metrics and robustness checks
+│       └── reports.py                   #     write_markdown_report
+│
+├── feature_registry/                    # Feature definitions and PIT retrieval
+│   ├── definitions.py                   #   FeatureDef dataclass, PITSafety enum
+│   ├── registry.py                      #   FeatureRegistry: load, validate, query features
+│   ├── retrieval.py                     #   pit_merge (merge_asof), PIT correctness validation
+│   ├── features.yml                     #   YAML registry of 9 core features
+│   └── tests/                           #   PIT retrieval and anti-leakage tests
+│       ├── test_pit_retrieval.py
+│       └── test_anti_leakage.py
+│
+├── mlflow_integration/                  # MLflow experiment tracking and model registry
+│   ├── tracking.py                      #   pipeline_run_context, log_fold/aggregate metrics
+│   └── registry.py                      #   register_model_candidate, promote, get_champion
+│
+├── lineage/                             # OpenLineage event emission
+│   ├── emitter.py                       #   PipelineLineageEmitter (START/COMPLETE/FAIL)
+│   ├── backend.py                       #   FileTransport (JSON event files)
+│   ├── facets.py                        #   Custom facets for pipeline config and schema
+│   └── tests/
+│       └── test_emitter.py              #   Event structure tests
+│
+├── gx/                                  # Great Expectations data contracts
+│   ├── great_expectations.yml           #   GX context configuration
+│   └── expectations/                    #   Expectation suites
+│       ├── raw_panel_ingest.json        #     Panel CSV column/value validation
+│       ├── model_ready_dataset.json     #     Feature + label completeness checks
+│       ├── fold_metrics.json            #     Per-fold metric column validation
+│       └── trade_blotter.json           #     Trade record field validation
+│
+├── tests/                               # Pytest test suite
+│   ├── conftest.py                      #   Root path setup
+│   ├── test_phase1_regression.py        #   Pipeline helper regressions
+│   ├── test_phase1_smoke.py             #   Phase 1 sanity-check smoke tests
+│   ├── test_phase1_helpers.py           #   Pipeline helper behavior tests
+│   ├── test_phase1_sanity_check_validator.py  # Sanity check tool validation
+│   ├── test_control_plane_policy.py     #   Control-plane policy tests
+│   ├── test_control_plane_runtime.py    #   Control-plane runtime tests
+│   ├── test_cursor_projection.py        #   Cursor projection rendering tests
+│   ├── test_assessment_lifecycle.py     #   Assessment lifecycle tests
+│   └── test_archive_no_authority.py     #   Archive/evidence separation enforcement
+│
+├── tools/                               # CLI tools and verification scripts
+│   ├── control_plane.py                 #   Control-plane CLI (trust, validate, run-task)
+│   ├── render_cursor_projection.py      #   Regenerate .cursor/* from AGENTS.md (--check mode)
+│   ├── phase1_sanity_check.py           #   Pipeline output artifact validator
+│   ├── verify_runtime.py                #   Python version and venv validation
+│   ├── verify_tracked_locks.py          #   Bootstrap/policy/projection lock verification
+│   ├── verify_frozen_surfaces.py        #   Frozen file existence verification
+│   ├── refresh_bootstrap_locks.py       #   Regenerate bootstrap lock files
+│   ├── refresh_loader_manifest.py       #   Regenerate loader manifest hashes
+│   ├── refresh_projection_lock.py       #   Regenerate projection lock
+│   ├── migrate_repo_env.py              #   Repository environment migration utility
+│   └── enter_e_drive_env.ps1            #   Windows PowerShell env bootstrap convenience
+│
+├── contracts/                           # Enforced lock files and manifests
+│   ├── bootstrap_pin.lock.json          #   Policy fingerprint + loader manifest hash pin
+│   ├── policy_fingerprint.lock.json     #   Legacy policy fingerprint pin
+│   ├── projection_manifest.lock.json    #   Cursor projection generation metadata
+│   └── frozen_surfaces_manifest.json    #   Required file existence manifest
+│
+├── docs/                                # Documentation and evidence
+│   ├── phase1-research-spec.md          #   Frozen Phase 1 research semantics
+│   ├── phase1-execution-roadmap.md      #   Phase 1 execution stages and status
+│   ├── contract-inventory.md            #   Contract enforcement audit
+│   ├── pipeline-assessment.md           #   Pipeline validity and health assessment
+│   ├── assessments/                     #   Latest assessment snapshots
+│   └── archive/                         #   Historical evidence (read-only, non-authoritative)
+│       ├── README.md                    #     Archive non-authority statement
+│       ├── contracts/                   #     Retired governance contracts (8 files)
+│       └── assessments/                 #     Dated historical assessments
+│
+├── .github/workflows/                   # GitHub Actions CI/CD
+│   ├── ci.yml                           #   Main CI: tests, contracts, data, drift checks
+│   ├── release.yml                      #   8-layer release gate with env approval
+│   ├── promote-model.yml                #   Model promotion with reviewer approval
+│   ├── _test.yml                        #   Reusable: pytest + feature/lineage tests
+│   ├── _contracts.yml                   #   Reusable: verify locks, surfaces, runtime
+│   ├── _data-contracts.yml              #   Reusable: GE suite validation
+│   ├── _lineage-check.yml               #   Reusable: OpenLineage module validation
+│   └── _regenerate-check.yml            #   Reusable: cursor projection drift check
+│
+├── .agents/skills/                      # Canonical agent skill definitions
+│   ├── phase1-validation-runbook/       #   Decision-grade validation guidance
+│   ├── pipeline-test-author/            #   Test authoring workflow
+│   ├── artifact-schema-inspector/       #   Artifact schema inspection
+│   ├── pipeline-runner-recovery/        #   Pipeline run/resume/recovery guidance
+│   ├── control-plane-bootstrap-repair/  #   Bootstrap lock repair workflow
+│   └── runtime-cutover-3119/            #   Python 3.11.9 cutover steps
+│
+├── .cursor/                             # Generated Cursor IDE compatibility (from AGENTS.md)
+│   ├── projection_manifest.json         #   Generation metadata
+│   ├── settings.json                    #   Cursor plugin settings
+│   ├── rules/                           #   11 .mdc rule files (compatibility shims)
+│   ├── skills/                          #   6 projected skill stubs
+│   ├── agents/                          #   6 agent alias definitions
+│   └── commands/                        #   6 command definitions
+│
+├── .codex/                              # Codex CLI agent and hook configuration
+│   ├── config.toml                      #   Model, sandbox, and skill config
+│   ├── hooks.json                       #   Session start/stop verification hooks
+│   └── agents/                          #   4 agent definitions (verifier, implementer, etc.)
+│
+├── .dvc/                                # DVC configuration
+│   ├── config                           #   Remote storage config (local)
+│   └── .gitignore                       #   DVC cache/tmp ignores
+│
+└── .vscode/                             # VS Code workspace settings
+    ├── settings.json
+    └── extensions.json
+```
 
-- the main research engine lives in `Pipeline.py`
-- the control plane lives in `control_plane/` and `tools/control_plane.py`
-- the validation layer is a custom contract/sanity checker, not Great Expectations
-- the repo stores outputs as CSV, JSON, Markdown, PNG, and resume state files
-- the repo already has tests for helper logic, regressions, smoke behavior, and control-plane enforcement
-- Phase 2 is optional and refers to auditability/refactor improvements, not required research completion
+### Generated vs Canonical vs Local-only
 
-The current system is already doing real work. This README documents that work rather than pretending the repo is a different architecture.
+| Surface | Authority | How maintained |
+|---------|-----------|----------------|
+| `.agents/skills/*` | Canonical | Edited directly |
+| `.cursor/*` | Generated | `python tools/render_cursor_projection.py` from AGENTS.md |
+| `control_plane/policies/*` | Canonical | Loaded by `LoadedPolicy` at runtime |
+| `contracts/*.lock.json` | Tracked | `tools/refresh_bootstrap_locks.py` after trust |
+| `docs/archive/*` | Evidence-only | Read-only historical record, no runtime authority |
+| `pipeline_outputs_smoke/` | Local-only | Regenerable run output, gitignored |
 
 ## Pipeline Architecture
 
@@ -472,38 +634,56 @@ This matters because the repo is designed to keep policy, execution, and verific
 ### Runtime
 
 - Python `3.11.9`
-- Windows workspace
-- workspace virtual environment at `.venv`
-- Git must be available on `PATH`; this machine now exposes the portable install under `E:\stock_csvs_AI-Perspective\Git\...` through the user `PATH`
-- checked-in Codex hooks/config may exist, but native Windows acceptance must not rely on hook execution
+- Environments managed by [uv](https://docs.astral.sh/uv/)
+- `uv.lock` is the canonical lockfile; CI installs from lock, not loose resolution
+- Git must be available on `PATH`
+- Codex hooks/config may exist, but native Windows acceptance must not rely on hook execution
 
-### Research Pipeline Dependencies
+### Setup (any platform)
 
-The core research stack is defined in `requirements.txt`:
+```bash
+uv sync --group dev --group control-plane
+```
 
-- pandas
-- pandas-stubs
-- numpy
-- matplotlib
-- scikit-learn
-- xgboost
-- lightgbm
-- tabulate
-- optuna
+This installs all core research dependencies plus dev/test and control-plane packages from the lockfile.
 
-### Control-Plane And Test Dependencies
+Additional dependency groups are available for the extended platform:
 
-The control plane and local validation tooling use:
+```bash
+uv sync --group dev --group control-plane --group orchestrator --group data --group ml --group lineage
+```
 
-- `requirements-control-plane.txt`
-- `requirements-dev.txt`
+### Setup (WSL / Linux -- preferred for CI parity)
 
-Typical setup:
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+cd /mnt/e/stock_csvs_AI-Perspective/NEW
+uv sync --group dev --group control-plane
+uv run python -m pytest -q
+```
+
+### Setup (Windows PowerShell)
 
 ```powershell
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe -m pip install -r requirements-control-plane.txt -r requirements-dev.txt
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+cd E:\stock_csvs_AI-Perspective\NEW
+uv sync --group dev --group control-plane
+uv run python -m pytest -q
 ```
+
+### Dependency Groups
+
+All dependencies are defined in `pyproject.toml` under `[project.dependencies]` and `[dependency-groups]`:
+
+| Group | Contents |
+|-------|----------|
+| (default) | pandas, numpy, matplotlib, scikit-learn, xgboost, lightgbm, tabulate, optuna |
+| `dev` | pytest |
+| `control-plane` | openai, openai-agents, python-dotenv |
+| `orchestrator` | dagster, dagster-webserver |
+| `data` | great-expectations, dvc, dvclive |
+| `ml` | mlflow |
+| `lineage` | openlineage-python |
 
 ### Path And Output Policy
 

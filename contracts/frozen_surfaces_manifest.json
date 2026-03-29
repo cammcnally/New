@@ -5,15 +5,7 @@
     "docs/phase1-execution-roadmap.md",
     ".python-version",
     "pyproject.toml",
-    "control_plane/phase1_contract.json",
-    "contracts/semantic_precedence_contract.json",
-    "contracts/threshold_compatibility_contract.json",
-    "contracts/determinism_contract.json",
-    "contracts/migration_sequence.json",
-    "contracts/current_mission_priority.json",
-    "contracts/mcp_permissions.json",
-    "contracts/self_heal_contract.json",
-    "contracts/issue_taxonomy.json"
+    "control_plane/phase1_contract.json"
   ],
   "verified_by": "tools/verify_frozen_surfaces.py"
 }

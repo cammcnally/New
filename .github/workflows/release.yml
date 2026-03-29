@@ -1,0 +1,81 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version tag
+        required: true
+        type: string
+
+jobs:
+  # Layer 1: Environment
+  environment:
+    name: "Layer 1: Environment"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+      - run: uv sync --group dev --group control-plane
+      - run: uv run python tools/verify_runtime.py
+
+  # Layer 2: Code
+  tests:
+    name: "Layer 2: Code"
+    needs: environment
+    uses: ./.github/workflows/_test.yml
+
+  # Layer 3: Control plane
+  contracts:
+    name: "Layer 3: Control plane"
+    needs: environment
+    uses: ./.github/workflows/_contracts.yml
+
+  # Layer 4: Data contracts
+  data-contracts:
+    name: "Layer 4: Data contracts"
+    needs: environment
+    uses: ./.github/workflows/_data-contracts.yml
+
+  # Layer 5: Lineage
+  lineage:
+    name: "Layer 5: Lineage"
+    needs: environment
+    uses: ./.github/workflows/_lineage-check.yml
+
+  # Layer 6: Generated drift
+  drift:
+    name: "Layer 6: Generated drift"
+    needs: environment
+    uses: ./.github/workflows/_regenerate-check.yml
+
+  # Layer 7: Feature registry
+  features:
+    name: "Layer 7: Feature PIT checks"
+    needs: environment
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+      - run: uv sync --group dev --group control-plane
+      - name: Feature registry and PIT tests
+        run: uv run python -m pytest feature_registry/tests -q --tb=short
+
+  # Layer 8: Approval gate
+  release:
+    name: "Layer 8: Release approval"
+    needs: [tests, contracts, data-contracts, lineage, drift, features]
+    runs-on: ubuntu-latest
+    environment:
+      name: release
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create release
+        run: |
+          echo "All validation layers passed."
+          echo "Release version: ${{ inputs.version }}"
+          echo "Release ready for publication."

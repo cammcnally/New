@@ -1,0 +1,9 @@
+{
+  "plans_file": "PLANS.md",
+  "required_for": [
+    "multi_hour_work",
+    "restart_prone_work",
+    "protected_infrastructure_changes",
+    "pipeline_resume_logic_changes"
+  ]
+}

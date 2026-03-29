@@ -1,0 +1,38 @@
+{
+  "expectation_suite_name": "model_ready_dataset",
+  "meta": {
+    "description": "Modeling frame: identifiers, label, forward return, event horizon end. Feature columns are allowed beyond these checks."
+  },
+  "expectations": [
+    {
+      "expectation_type": "expect_column_values_to_not_be_null",
+      "kwargs": { "column": "ticker" },
+      "meta": {}
+    },
+    {
+      "expectation_type": "expect_column_values_to_not_be_null",
+      "kwargs": { "column": "timestamp_utc" },
+      "meta": {}
+    },
+    {
+      "expectation_type": "expect_column_values_to_not_be_null",
+      "kwargs": { "column": "long_win" },
+      "meta": {}
+    },
+    {
+      "expectation_type": "expect_column_values_to_be_in_set",
+      "kwargs": { "column": "long_win", "value_set": [0, 1, true, false] },
+      "meta": {}
+    },
+    {
+      "expectation_type": "expect_column_to_exist",
+      "kwargs": { "column": "forward_label_return_net" },
+      "meta": {}
+    },
+    {
+      "expectation_type": "expect_column_to_exist",
+      "kwargs": { "column": "event_end_time" },
+      "meta": {}
+    }
+  ]
+}

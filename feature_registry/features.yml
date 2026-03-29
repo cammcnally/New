@@ -1,0 +1,57 @@
+# Core feature definitions aligned with Pipeline.add_per_ticker_features / build_feature_matrix.
+# pit_safety: SAFE = uses only data available at or before the bar; UNSAFE = uses future bars.
+
+features:
+  - name: ret_1
+    description: 1-bar simple return on close (pct_change).
+    family: returns
+    pit_safety: SAFE
+    lookback_bars: 2
+
+  - name: ret_5
+    description: 5-bar simple return on close.
+    family: returns
+    pit_safety: SAFE
+    lookback_bars: 6
+
+  - name: ret_20
+    description: 20-bar simple return on close.
+    family: returns
+    pit_safety: SAFE
+    lookback_bars: 21
+
+  - name: rsi_14
+    description: 14-period Wilder-style RSI from close changes.
+    family: momentum
+    pit_safety: SAFE
+    lookback_bars: 15
+
+  - name: macd_signal
+    description: MACD signal line (pipeline column macd_signal_12_26_9).
+    family: momentum
+    pit_safety: SAFE
+    lookback_bars: 35
+
+  - name: atr_14
+    description: 14-period ATR (EWMA of true range).
+    family: volatility
+    pit_safety: SAFE
+    lookback_bars: 15
+
+  - name: bb_pct_b
+    description: Bollinger %B / band position (pipeline column bb_pos_20_2, 20-bar 2σ).
+    family: volatility
+    pit_safety: SAFE
+    lookback_bars: 20
+
+  - name: vol_ratio_5_20
+    description: Volume ratio short/long (5-bar vs 20-bar rolling mean); registry name for volume pressure.
+    family: volume
+    pit_safety: SAFE
+    lookback_bars: 20
+
+  - name: xs_ret_1_zscore
+    description: Cross-sectional z-score of short-horizon return at each timestamp (conceptual; pipeline uses xs_ret_*_z on selected bases).
+    family: cross_sectional
+    pit_safety: SAFE
+    lookback_bars: 2

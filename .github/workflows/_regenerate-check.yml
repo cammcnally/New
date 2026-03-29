@@ -1,0 +1,16 @@
+name: Generated File Drift Check
+
+on:
+  workflow_call:
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+      - run: uv sync --group dev --group control-plane
+      - name: Check cursor projection drift
+        run: uv run python tools/render_cursor_projection.py --check

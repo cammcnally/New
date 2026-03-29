@@ -1,0 +1,20 @@
+name: Test Suite
+
+on:
+  workflow_call:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+      - run: uv sync --group dev --group control-plane
+      - name: Run unit and regression tests
+        run: uv run python -m pytest -q --tb=short
+      - name: Run feature registry tests
+        run: uv run python -m pytest feature_registry/tests -q --tb=short
+      - name: Run lineage tests
+        run: uv run python -m pytest lineage/tests -q --tb=short

@@ -38,3 +38,23 @@ python312_user_relocated/
 # Local bundle notes (not repo documentation)
 BUNDLE_README.md
 BUNDLE_README.txt
+
+# DVC
+*.dvc
+.dvc/config.local
+.dvc/tmp
+.dvc/cache
+
+# MLflow
+mlruns/
+
+# Lineage events
+lineage_events/
+
+# Cursor skills/commands (generated, tracked separately)
+!.cursor/skills/
+!.cursor/skills/**
+!.cursor/commands/
+!.cursor/commands/**
+!.cursor/settings.json
+!.cursor/projection_manifest.json

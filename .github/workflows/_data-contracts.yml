@@ -1,0 +1,34 @@
+name: Data Contract Validation
+
+on:
+  workflow_call:
+    inputs:
+      smoke_panel:
+        description: Path to smoke panel CSV for validation
+        required: false
+        type: string
+        default: "panel_ohlcv_smoke_tier1.csv"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+      - run: uv sync --group dev --group control-plane --group data
+      - name: Validate GE suites are well-formed
+        run: |
+          uv run python -c "
+          import json
+          from pathlib import Path
+          suites = list(Path('gx/expectations').glob('*.json'))
+          assert len(suites) >= 4, f'Expected at least 4 suites, found {len(suites)}'
+          for s in suites:
+              data = json.loads(s.read_text())
+              assert 'expectations' in data, f'{s.name} missing expectations key'
+              assert len(data['expectations']) > 0, f'{s.name} has no expectations'
+              print(f'{s.name}: {len(data[\"expectations\"])} expectations')
+          print('All GE suites are well-formed.')
+          "

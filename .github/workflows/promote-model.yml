@@ -1,0 +1,49 @@
+name: Model Promotion
+
+on:
+  workflow_dispatch:
+    inputs:
+      model_name:
+        description: Name of the model to promote
+        required: true
+        type: string
+      run_id:
+        description: MLflow run ID of the candidate
+        required: true
+        type: string
+      alias:
+        description: Target alias (champion or challenger)
+        required: true
+        type: choice
+        options:
+          - challenger
+          - champion
+
+jobs:
+  evaluate:
+    uses: ./.github/workflows/_test.yml
+
+  verify-contracts:
+    uses: ./.github/workflows/_contracts.yml
+
+  promote:
+    needs: [evaluate, verify-contracts]
+    runs-on: ubuntu-latest
+    environment:
+      name: model-promotion
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+      - run: uv sync --group dev --group control-plane --group ml
+      - name: Promote model
+        run: |
+          uv run python -c "
+          from mlflow_integration.registry import promote_model
+          print('Promoting model: ${{ inputs.model_name }}')
+          print('Run ID: ${{ inputs.run_id }}')
+          print('Alias: ${{ inputs.alias }}')
+          # promote_model('${{ inputs.model_name }}', version, '${{ inputs.alias }}')
+          print('Model promotion requires manual version lookup -- see mlflow_integration.registry')
+          "

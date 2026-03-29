@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Tests
+    uses: ./.github/workflows/_test.yml
+
+  contracts:
+    name: Contract verification
+    uses: ./.github/workflows/_contracts.yml
+
+  data-contracts:
+    name: Data contract validation
+    uses: ./.github/workflows/_data-contracts.yml
+
+  generated-drift:
+    name: Generated file drift check
+    uses: ./.github/workflows/_regenerate-check.yml

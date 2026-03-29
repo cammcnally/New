@@ -1,0 +1,24 @@
+{
+  "root": ".local/control_plane/tasks",
+  "required_files": [
+    "requirements.json",
+    "acceptance.json",
+    "agent_task.json",
+    "task_brief.md",
+    "classification.json",
+    "summary.md",
+    "handoff_state.json",
+    "verification_checklist.json",
+    "current_status.json",
+    "final_result_summary.md",
+    "warning_manifest.json",
+    "environment_fingerprint.json",
+    "trace_metadata.json",
+    "execplan_reference.json",
+    "approval_requirements.json",
+    "review_outputs.json",
+    "verifier_evidence.json",
+    "state_log.jsonl",
+    "artifact_manifest.json"
+  ]
+}

@@ -1,7 +1,7 @@
 {
-  "loader_manifest_hash": "dc166af4a97f7a0d99252a11054334f65da1ce72b4c59be32b5aa89f5c8fc5fa",
+  "loader_manifest_hash": "f681e1219ac9d62ab0811a406a0f43817a8efca95ed1369efd07a5252bef5f96",
   "loader_manifest_path": "control_plane/loader_manifest.json",
-  "policy_fingerprint": "035ca7c528cfb967962ae948a12daa6fc9a1cfbe9a2c8c3847810bf9df907272",
+  "policy_fingerprint": "ffe5d98ececd1719c1f9eb6d3536824856fea7873b8d27a2698414f99fe657c2",
   "policy_path": "AGENTS.md",
-  "policy_version": "2026-03-22.1"
+  "policy_version": "2026-03-29.1"
 }

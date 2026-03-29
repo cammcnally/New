@@ -1,0 +1,20 @@
+name: Contract Verification
+
+on:
+  workflow_call:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+      - run: uv sync --group dev --group control-plane
+      - name: Verify runtime environment
+        run: uv run python tools/verify_runtime.py
+      - name: Verify tracked locks
+        run: uv run python tools/verify_tracked_locks.py
+      - name: Verify frozen surfaces
+        run: uv run python tools/verify_frozen_surfaces.py

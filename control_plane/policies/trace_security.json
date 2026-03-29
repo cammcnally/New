@@ -1,0 +1,11 @@
+{
+  "default_mode": "minimal",
+  "trace_include_sensitive_data_default": false,
+  "rich_capture_requires": "requires_human",
+  "redacted_environment_keys": [
+    "OPENAI_API_KEY",
+    "CODEX_API_KEY",
+    "MCP_PROXY_AUTH_TOKEN"
+  ],
+  "stable_group_id_required": true
+}

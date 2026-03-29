@@ -56,13 +56,14 @@ def _ensure_runtime_contracts() -> None:
     if runtime_environment["required_python_version"] != "3.11.9":
         raise SystemExit("AGENTS.md runtime_environment is not pinned to 3.11.9")
 
-    actions = payload["actions"]
+    action_registry_path = PROJECT_ROOT / "control_plane" / "policies" / "action_registry.json"
+    actions = _load_json(action_registry_path)
     if actions["run_tests_all"]["command"] != ["python", "-m", "pytest", "-q"]:
-        raise SystemExit("AGENTS.md run_tests_all is not using repo-local python -m pytest")
+        raise SystemExit("action_registry run_tests_all is not using repo-local python -m pytest")
     if actions["run_tests_marker"]["command"] != ["python", "-m", "pytest", "-m", "{marker}"]:
-        raise SystemExit("AGENTS.md run_tests_marker is not using repo-local python -m pytest")
+        raise SystemExit("action_registry run_tests_marker is not using repo-local python -m pytest")
     if actions["run_tests_scoped"]["command"] != ["python", "-m", "pytest", "-q", "{paths}"]:
-        raise SystemExit("AGENTS.md run_tests_scoped is missing or incorrect")
+        raise SystemExit("action_registry run_tests_scoped is missing or incorrect")
 
 
 def _ensure_no_bare_pytest_lines() -> None:

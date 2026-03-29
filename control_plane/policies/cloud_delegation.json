@@ -1,0 +1,22 @@
+{
+  "allowed": [
+    "pr_review",
+    "issue_triage",
+    "doc_review",
+    "trace_review",
+    "background_analysis",
+    "parallel_exploration",
+    "long_running_non_authoritative_checks"
+  ],
+  "forbidden": [
+    "authoritative_local_pipeline_execution",
+    "secret_export",
+    "sensitive_local_artifact_export"
+  ],
+  "local_only_when": [
+    "touches_pipeline_logic",
+    "touches_local_paths_or_resume_state",
+    "touches_protected_infrastructure",
+    "changes_one_or_two_tightly_coupled_files"
+  ]
+}

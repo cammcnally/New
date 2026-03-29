@@ -1,0 +1,10 @@
+{
+  "question": "Does this improve the current logic or work of this repo?",
+  "gates": [
+    "supported_by_current_official_docs",
+    "fits_local_first_runtime_model",
+    "improves_reliability_or_recovery_or_verification_or_orchestration_or_observability",
+    "does_not_conflict_with_phase1_governance"
+  ],
+  "catalog_allowed": false
+}

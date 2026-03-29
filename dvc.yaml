@@ -1,0 +1,30 @@
+stages:
+  train:
+    cmd: uv run python Pipeline.py --input_panel_csv panel_ohlcv_clean.csv --output_dir pipeline_outputs
+    deps:
+      - Pipeline.py
+      - panel_ohlcv_clean.csv
+    outs:
+      - pipeline_outputs/01_data/:
+          cache: true
+      - pipeline_outputs/02_metrics/:
+          cache: true
+      - pipeline_outputs/03_features/:
+          cache: true
+      - pipeline_outputs/04_strategies/:
+          cache: true
+      - pipeline_outputs/05_reports/:
+          cache: true
+      - pipeline_outputs/06_state/:
+          cache: true
+    metrics:
+      - pipeline_outputs/02_metrics/fold_metrics.csv:
+          cache: false
+
+  evaluate:
+    cmd: uv run python tools/phase1_sanity_check.py --output_dir pipeline_outputs
+    deps:
+      - tools/phase1_sanity_check.py
+      - pipeline_outputs/02_metrics/
+      - pipeline_outputs/03_features/
+      - pipeline_outputs/04_strategies/

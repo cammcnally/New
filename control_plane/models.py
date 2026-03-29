@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+import json
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Any, Mapping, Optional, Sequence
@@ -74,6 +75,22 @@ class ActionSpec:
         )
 
 
+SUPPLEMENTARY_POLICIES_DIR = Path("control_plane/policies")
+
+_SUPPLEMENTARY_MAP: dict[str, tuple[str, Optional[str]]] = {
+    "task_scaffolding": ("task_scaffolding.json", None),
+    "trace_security": ("trace_security.json", None),
+    "cloud_delegation_policy": ("cloud_delegation.json", None),
+    "cookbook_policy": ("cookbook_policy.json", None),
+    "execplan_policy": ("execplan_policy.json", None),
+    "structured_review": ("review_and_approval.json", "structured_review"),
+    "delegation_data_classes": ("review_and_approval.json", "delegation_data_classes"),
+    "approval_policy": ("review_and_approval.json", "approval_policy"),
+    "verifier_store": ("review_and_approval.json", "verifier_store"),
+    "actions": ("action_registry.json", None),
+}
+
+
 @dataclass(frozen=True)
 class LoadedPolicy:
     project_root: Path
@@ -87,6 +104,22 @@ class LoadedPolicy:
     governance_registries_path: Path
     governance_registries: Mapping[str, Any]
 
+    def _load_supplementary(self, section: str) -> Any:
+        """Load a section from AGENTS.md JSON first, then fall back to policy files."""
+        if section in self.raw_policy:
+            return self.raw_policy[section]
+        entry = _SUPPLEMENTARY_MAP.get(section)
+        if not entry:
+            return {}
+        filename, subkey = entry
+        path = self.project_root / SUPPLEMENTARY_POLICIES_DIR / filename
+        if not path.exists():
+            return {} if subkey != "delegation_data_classes" else []
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if subkey:
+            return data.get(subkey, {} if subkey != "delegation_data_classes" else [])
+        return data
+
     @property
     def agents(self) -> Mapping[str, AgentPolicy]:
         payload = self.raw_policy.get("agents", {})
@@ -94,7 +127,9 @@ class LoadedPolicy:
 
     @property
     def actions(self) -> Mapping[str, ActionSpec]:
-        payload = self.raw_policy.get("actions", {})
+        payload = self._load_supplementary("actions")
+        if not isinstance(payload, Mapping):
+            return {}
         return {name: ActionSpec.from_mapping(name, cast_mapping(spec)) for name, spec in payload.items()}
 
     def action_for(self, name: str) -> ActionSpec:
@@ -115,11 +150,11 @@ class LoadedPolicy:
 
     @property
     def trace_security(self) -> Mapping[str, Any]:
-        return cast_mapping(self.raw_policy.get("trace_security", {}))
+        return cast_mapping(self._load_supplementary("trace_security"))
 
     @property
     def task_scaffolding(self) -> Mapping[str, Any]:
-        return cast_mapping(self.raw_policy.get("task_scaffolding", {}))
+        return cast_mapping(self._load_supplementary("task_scaffolding"))
 
     @property
     def protected_infrastructure(self) -> Mapping[str, Any]:
@@ -135,19 +170,19 @@ class LoadedPolicy:
 
     @property
     def approval_policy(self) -> Mapping[str, Any]:
-        return cast_mapping(self.raw_policy.get("approval_policy", {}))
+        return cast_mapping(self._load_supplementary("approval_policy"))
 
     @property
     def verifier_store(self) -> Mapping[str, Any]:
-        return cast_mapping(self.raw_policy.get("verifier_store", {}))
+        return cast_mapping(self._load_supplementary("verifier_store"))
 
     @property
     def structured_review(self) -> Mapping[str, Any]:
-        return cast_mapping(self.raw_policy.get("structured_review", {}))
+        return cast_mapping(self._load_supplementary("structured_review"))
 
     @property
     def delegation_data_classes(self) -> tuple[str, ...]:
-        payload = self.raw_policy.get("delegation_data_classes", [])
+        payload = self._load_supplementary("delegation_data_classes")
         return tuple(str(item) for item in payload)
 
     @property
