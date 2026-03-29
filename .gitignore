@@ -27,3 +27,14 @@ pipeline_outputs_*/
 
 # Local relocated Python package bundle
 python312_user_relocated/
+
+# Ad-hoc / backup virtualenvs (canonical is .venv/)
+.venv311/
+.venv-py312-backup/
+
+# Drive sync / temp upload debris
+.tmp.driveupload/
+
+# Local bundle notes (not repo documentation)
+BUNDLE_README.md
+BUNDLE_README.txt
