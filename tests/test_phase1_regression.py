@@ -142,10 +142,10 @@ def test_cost_model_schema_rejects_missing_required_fields() -> None:
 
 
 def test_pipeline_python_version_gate_enforces_supported_range() -> None:
-    _require_supported_python_version((3, 12, 10))
-    _require_supported_python_version((3, 12, 12))
+    _require_supported_python_version((3, 11, 9))
+    _require_supported_python_version((3, 11, 11))
     with pytest.raises(SystemExit):
-        _require_supported_python_version((3, 14, 2))
+        _require_supported_python_version((3, 12, 2))
 
 
 def test_pipeline_source_removes_fake_cache_and_legacy_resume_surfaces() -> None:

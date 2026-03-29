@@ -10,8 +10,8 @@ from .models import LoadedPolicy, cast_mapping
 
 CANONICAL_POLICY_BEGIN = "<!-- BEGIN_CANONICAL_POLICY -->"
 CANONICAL_POLICY_END = "<!-- END_CANONICAL_POLICY -->"
-DEFAULT_BOOTSTRAP_PIN_PATH = Path(".local/control_plane/bootstrap/approved_bootstrap.json")
-LEGACY_EXTERNAL_PIN_PATH = Path(".local/control_plane/approved_policy_fingerprint.json")
+DEFAULT_BOOTSTRAP_PIN_PATH = Path("contracts/bootstrap_pin.lock.json")
+LEGACY_EXTERNAL_PIN_PATH = Path("contracts/policy_fingerprint.lock.json")
 DEFAULT_POLICY_PATH = Path("AGENTS.md")
 DEFAULT_LOADER_MANIFEST_PATH = Path("control_plane/loader_manifest.json")
 
@@ -73,6 +73,32 @@ def compute_loader_manifest_hash(project_root: Path) -> str:
     return compute_sha256_file(project_root / DEFAULT_LOADER_MANIFEST_PATH)
 
 
+def build_policy_fingerprint_lock_payload(project_root: Path, payload: Mapping[str, Any]) -> Mapping[str, Any]:
+    project_root = project_root.resolve()
+    policy_path = project_root / DEFAULT_POLICY_PATH
+    return {
+        "policy_path": str(policy_path.relative_to(project_root)),
+        "policy_fingerprint": compute_policy_fingerprint_from_payload(payload),
+        "policy_version": payload.get("policy_version"),
+    }
+
+
+def write_policy_fingerprint_lock(
+    project_root: Path,
+    payload: Mapping[str, Any],
+    *,
+    destination: Optional[Path] = None,
+) -> Path:
+    project_root = project_root.resolve()
+    target = destination or (project_root / LEGACY_EXTERNAL_PIN_PATH)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(
+        json.dumps(build_policy_fingerprint_lock_payload(project_root, payload), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return target
+
+
 def _resolve_bootstrap_pin_path(project_root: Path, payload: Mapping[str, Any]) -> Path:
     file_env_var_name = _bootstrap_policy_value(payload, "external_bootstrap_pin_file_env", "CODEX_BOOTSTRAP_PIN_FILE")
     default_pin_relative = Path(_bootstrap_policy_value(payload, "external_bootstrap_pin_default", str(DEFAULT_BOOTSTRAP_PIN_PATH)))
@@ -122,13 +148,13 @@ def load_bootstrap_pin(
     parsed = json.loads(legacy_path.read_text(encoding="utf-8"))
     if not isinstance(parsed, Mapping):
         raise PolicyBootstrapError(f"Legacy bootstrap pin is not a JSON object: {legacy_path}")
-    fingerprint = parsed.get("fingerprint")
+    fingerprint = parsed.get("policy_fingerprint", parsed.get("fingerprint"))
     if not isinstance(fingerprint, str) or not fingerprint.strip():
         raise PolicyBootstrapError(f"Legacy bootstrap pin is missing fingerprint: {legacy_path}")
     return legacy_path, {
         "policy_fingerprint": fingerprint.strip(),
         "loader_manifest_hash": None,
-        "format": "legacy_policy_fingerprint_only",
+        "format": "policy_fingerprint_only",
     }
 
 
@@ -260,4 +286,5 @@ def trust_current_policy(project_root: Path, *, pin_path: Optional[Path] = None)
         "policy_version": payload.get("policy_version"),
     }
     destination.write_text(json.dumps(pin_payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    write_policy_fingerprint_lock(project_root, payload)
     return destination

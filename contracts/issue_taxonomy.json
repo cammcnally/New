@@ -1,0 +1,16 @@
+{
+  "issue_classes": [
+    "runtime_mismatch",
+    "loader_manifest_mismatch",
+    "bootstrap_lock_mismatch",
+    "policy_fingerprint_mismatch",
+    "projection_lock_mismatch",
+    "semantic_drift",
+    "threshold_collision",
+    "contract_mismatch",
+    "determinism_violation",
+    "artifact_schema_violation",
+    "smoke_failure",
+    "resume_fingerprint_failure"
+  ]
+}

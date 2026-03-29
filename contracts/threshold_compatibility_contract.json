@@ -1,0 +1,6 @@
+{
+  "threshold_family_definition": "108_tuple_phase1_threshold_family",
+  "new_admission_engine_may_not_override_threshold_family": true,
+  "new_admission_thresholds_initial_mode": "mapped_or_disabled",
+  "equivalence_required_before_override": true
+}

@@ -137,9 +137,9 @@ The control plane is local-first, Phase 1-safe, and fail-closed.
   },
   "bootstrap_policy": {
     "loader_manifest_path": "control_plane/loader_manifest.json",
-    "external_bootstrap_pin_default": ".local/control_plane/bootstrap/approved_bootstrap.json",
+    "external_bootstrap_pin_default": "contracts/bootstrap_pin.lock.json",
     "external_bootstrap_pin_file_env": "CODEX_BOOTSTRAP_PIN_FILE",
-    "legacy_external_policy_pin_default": ".local/control_plane/approved_policy_fingerprint.json",
+    "legacy_external_policy_pin_default": "contracts/policy_fingerprint.lock.json",
     "legacy_external_policy_pin_file_env": "CODEX_POLICY_FINGERPRINT_FILE",
     "fail_closed": true
   },
@@ -201,7 +201,7 @@ The control plane is local-first, Phase 1-safe, and fail-closed.
     ]
   },
   "runtime_environment": {
-    "required_python_version": "3.12.10",
+    "required_python_version": "3.11.9",
     "required_venv_path": ".venv",
     "env_bootstrap_script": "tools/enter_e_drive_env.ps1",
     "required_secret_env": [
@@ -243,24 +243,28 @@ The control plane is local-first, Phase 1-safe, and fail-closed.
   },
   "skills_registry": {
     "validation-runbook": {
-      "path": ".cursor/skills/phase1-validation-runbook/SKILL.md",
+      "path": ".agents/skills/phase1-validation-runbook/SKILL.md",
       "purpose": "Decision-grade validation guidance."
     },
     "test-authoring": {
-      "path": ".cursor/skills/pipeline-test-author/SKILL.md",
+      "path": ".agents/skills/pipeline-test-author/SKILL.md",
       "purpose": "Targeted test authoring workflow."
     },
     "artifact-sanity-check": {
-      "path": ".cursor/skills/artifact-schema-inspector/SKILL.md",
+      "path": ".agents/skills/artifact-schema-inspector/SKILL.md",
       "purpose": "Artifact schema and completeness inspection."
     },
-    "pipeline-maintainer": {
-      "path": ".cursor/skills/pipeline-maintainer/SKILL.md",
-      "purpose": "Chronology-safe pipeline editing guidance."
-    },
-      "pipeline-runner-recovery": {
-      "path": ".cursor/skills/pipeline-runner-recovery/SKILL.md",
+    "pipeline-runner-recovery": {
+      "path": ".agents/skills/pipeline-runner-recovery/SKILL.md",
       "purpose": "Run, resume, and recovery guidance for the pipeline."
+    },
+    "control-plane-bootstrap-repair": {
+      "path": ".agents/skills/control-plane-bootstrap-repair/SKILL.md",
+      "purpose": "Repair loader-manifest and bootstrap-lock mismatches."
+    },
+    "runtime-cutover-3119": {
+      "path": ".agents/skills/runtime-cutover-3119/SKILL.md",
+      "purpose": "Exact Python 3.11.9 cutover workflow."
     }
   },
   "dependency_policy": {
@@ -507,6 +511,8 @@ The control plane is local-first, Phase 1-safe, and fail-closed.
     "run_tests_all": {
       "kind": "shell_template",
       "command": [
+        "python",
+        "-m",
         "pytest",
         "-q"
       ],
@@ -521,9 +527,28 @@ The control plane is local-first, Phase 1-safe, and fail-closed.
     "run_tests_marker": {
       "kind": "shell_template",
       "command": [
+        "python",
+        "-m",
         "pytest",
         "-m",
         "{marker}"
+      ],
+      "allowed_roles": [
+        "Runner",
+        "Verifier"
+      ],
+      "approval": "auto_approved_by_policy",
+      "sensitive": false,
+      "timeout_seconds": 1800
+    },
+    "run_tests_scoped": {
+      "kind": "shell_template",
+      "command": [
+        "python",
+        "-m",
+        "pytest",
+        "-q",
+        "{paths}"
       ],
       "allowed_roles": [
         "Runner",

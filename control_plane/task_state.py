@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Mapping, Optional, Sequence
 
 from .models import TaskClassification, TaskWorkspace, TerminalState
+from .runtime_env import resolve_git_executable
 
 
 def utc_now_iso() -> str:
@@ -33,9 +34,10 @@ def file_sha256(path: Path) -> str:
 
 
 def current_git_commit(project_root: Path) -> Optional[str]:
+    git_executable = resolve_git_executable(project_root)
     try:
         result = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
+            [git_executable, "rev-parse", "HEAD"],
             cwd=project_root,
             check=True,
             capture_output=True,

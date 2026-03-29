@@ -1,8 +1,8 @@
 {
   "schema_version": "1.0.0",
   "python": {
-    "min": "3.12.10",
-    "max_exclusive": "3.13.0"
+    "min": "3.11.9",
+    "max_exclusive": "3.12.0"
   },
   "invariants": {
     "trial_count_formal": 108,

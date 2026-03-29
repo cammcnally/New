@@ -64,8 +64,8 @@ warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=pd.errors.PerformanceWarning)
 
-SUPPORTED_PYTHON_MIN = (3, 12, 10)
-SUPPORTED_PYTHON_MAX_EXCLUSIVE = (3, 13, 0)
+SUPPORTED_PYTHON_MIN = (3, 11, 9)
+SUPPORTED_PYTHON_MAX_EXCLUSIVE = (3, 12, 0)
 OPTUNA_MAX_WALL_CLOCK_SECONDS = 20 * 60
 
 

@@ -1,0 +1,18 @@
+{
+  "allowed_automatic_actions": [
+    "retry_download",
+    "rerun_validation",
+    "refresh_generated_projection",
+    "refresh_loader_manifest",
+    "refresh_tracked_locks",
+    "clear_local_cache"
+  ],
+  "forbidden_automatic_actions": [
+    "change_model_params",
+    "change_phase1_docs",
+    "change_threshold_semantics",
+    "change_promotion_rules",
+    "rewrite_frozen_documents",
+    "change_mcp_permissions"
+  ]
+}

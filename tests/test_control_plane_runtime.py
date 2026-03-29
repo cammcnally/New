@@ -8,9 +8,10 @@ from types import SimpleNamespace
 import pytest
 
 from control_plane.models import ActionSpec, ApprovalClass
-from control_plane.runtime_env import LoadedSecret, _python_version_is_supported
+from control_plane.runtime_env import LoadedSecret, _python_version_is_supported, resolve_git_executable
 from control_plane.orchestrator import CodexControlPlane, RepoActionRunner
 from control_plane.policy_loader import compute_loader_manifest_hash, compute_policy_fingerprint_from_payload, load_canonical_policy_payload
+from control_plane.task_state import current_git_commit
 from tools import control_plane as control_plane_cli
 
 
@@ -109,12 +110,76 @@ def test_build_agents_includes_dependency_agent(monkeypatch: pytest.MonkeyPatch,
 
 
 def test_control_plane_entrypoint_python_guards_reject_out_of_range_versions() -> None:
-    control_plane_cli._require_supported_python_version((3, 12, 10))
-    assert _python_version_is_supported((3, 12, 10), "3.12.10") is True
-    assert _python_version_is_supported((3, 12, 12), "3.12.10") is True
-    assert _python_version_is_supported((3, 13, 0), "3.12.10") is False
+    control_plane_cli._require_supported_python_version((3, 11, 9))
+    assert _python_version_is_supported((3, 11, 9), "3.11.9") is True
+    assert _python_version_is_supported((3, 11, 11), "3.11.9") is True
+    assert _python_version_is_supported((3, 12, 0), "3.11.9") is False
     with pytest.raises(SystemExit):
-        control_plane_cli._require_supported_python_version((3, 14, 2))
+        control_plane_cli._require_supported_python_version((3, 12, 2))
+
+
+def test_resolve_git_executable_prefers_path(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    project_root = tmp_path / "NEW"
+    project_root.mkdir()
+    monkeypatch.setattr("control_plane.runtime_env.shutil.which", lambda *_args, **_kwargs: r"E:\portable\git\cmd\git.exe")
+
+    assert resolve_git_executable(project_root) == r"E:\portable\git\cmd\git.exe"
+
+
+def test_resolve_git_executable_falls_back_to_repo_adjacent_portable_git(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    project_root = tmp_path / "NEW"
+    project_root.mkdir()
+    portable_git = tmp_path / "Git" / "cmd" / "git.exe"
+    portable_git.parent.mkdir(parents=True, exist_ok=True)
+    portable_git.write_text("", encoding="utf-8")
+    monkeypatch.setattr("control_plane.runtime_env.shutil.which", lambda *_args, **_kwargs: None)
+
+    assert Path(resolve_git_executable(project_root)).resolve() == portable_git.resolve()
+
+
+def test_current_git_commit_uses_resolved_git(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, object] = {}
+
+    monkeypatch.setattr("control_plane.task_state.resolve_git_executable", lambda *_args, **_kwargs: "portable-git")
+
+    def fake_run(command: list[str], **_: object) -> SimpleNamespace:
+        seen["command"] = command
+        return SimpleNamespace(stdout="abc123\n")
+
+    monkeypatch.setattr("control_plane.task_state.subprocess.run", fake_run)
+
+    assert current_git_commit(PROJECT_ROOT) == "abc123"
+    assert seen["command"] == ["portable-git", "rev-parse", "HEAD"]
+
+
+def test_repo_change_collectors_use_resolved_git(monkeypatch: pytest.MonkeyPatch) -> None:
+    cli_seen: dict[str, object] = {}
+    orchestrator_seen: dict[str, object] = {}
+
+    monkeypatch.setattr(control_plane_cli, "resolve_git_executable", lambda *_args, **_kwargs: "portable-git")
+
+    def fake_cli_run(command: list[str], **_: object) -> SimpleNamespace:
+        cli_seen["command"] = command
+        return SimpleNamespace(stdout=" M README.md\n?? notes.txt\n")
+
+    monkeypatch.setattr(control_plane_cli.subprocess, "run", fake_cli_run)
+    assert control_plane_cli._collect_repo_changes() == ["README.md", "notes.txt"]
+    assert cli_seen["command"] == ["portable-git", "status", "--short"]
+
+    monkeypatch.setattr("control_plane.orchestrator.resolve_git_executable", lambda *_args, **_kwargs: "portable-git")
+
+    def fake_orchestrator_run(command: list[str], **_: object) -> SimpleNamespace:
+        orchestrator_seen["command"] = command
+        return SimpleNamespace(stdout=" M README.md\n")
+
+    monkeypatch.setattr("control_plane.orchestrator.subprocess.run", fake_orchestrator_run)
+    control_plane = object.__new__(CodexControlPlane)
+    control_plane.project_root = PROJECT_ROOT
+    control_plane.policy = SimpleNamespace(runtime_environment={})
+    assert control_plane._collect_repo_changes() == ["README.md"]
+    assert orchestrator_seen["command"] == ["portable-git", "status", "--short"]
 
 
 def test_repo_action_runner_rejects_non_auto_approved_shell_actions() -> None:

@@ -1,0 +1,35 @@
+model = "gpt-5.4"
+approval_policy = "on-request"
+sandbox_mode = "workspace-write"
+
+[features]
+codex_hooks = true
+
+[agents]
+max_threads = 4
+max_depth = 1
+job_max_runtime_seconds = 1800
+
+[[skills.config]]
+path = ".agents/skills/phase1-validation-runbook"
+enabled = true
+
+[[skills.config]]
+path = ".agents/skills/pipeline-test-author"
+enabled = true
+
+[[skills.config]]
+path = ".agents/skills/artifact-schema-inspector"
+enabled = true
+
+[[skills.config]]
+path = ".agents/skills/pipeline-runner-recovery"
+enabled = true
+
+[[skills.config]]
+path = ".agents/skills/control-plane-bootstrap-repair"
+enabled = true
+
+[[skills.config]]
+path = ".agents/skills/runtime-cutover-3119"
+enabled = true

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import platform
+import shutil
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -17,6 +18,14 @@ class LoadedSecret:
     source_label: str
     source_path: Path | None
     exported_names: tuple[str, ...]
+
+
+PORTABLE_GIT_RELATIVE_CANDIDATES = (
+    Path("Git/cmd/git.exe"),
+    Path("Git/bin/git.exe"),
+    Path("Git/mingw64/bin/git.exe"),
+)
+DEFAULT_GIT_ENV_VAR_NAMES = ("CODEX_GIT_EXECUTABLE", "GIT_EXECUTABLE")
 
 
 def _runtime_policy_value(runtime_policy: Mapping[str, Any], key: str, default: str) -> str:
@@ -50,6 +59,50 @@ def _python_version_is_supported(actual: tuple[int, int, int], required_python: 
     return actual >= minimum and actual < upper
 
 
+def _git_env_var_names(runtime_policy: Mapping[str, Any] | None) -> tuple[str, ...]:
+    if runtime_policy is None:
+        return DEFAULT_GIT_ENV_VAR_NAMES
+    raw_names = runtime_policy.get("git_executable_env_vars", DEFAULT_GIT_ENV_VAR_NAMES)
+    if not isinstance(raw_names, (list, tuple)):
+        return DEFAULT_GIT_ENV_VAR_NAMES
+    normalized = tuple(str(item).strip() for item in raw_names if str(item).strip())
+    return normalized or DEFAULT_GIT_ENV_VAR_NAMES
+
+
+def _candidate_git_path(project_root: Path, raw_path: str) -> Path:
+    candidate = Path(raw_path)
+    if not candidate.is_absolute():
+        candidate = project_root / candidate
+    return candidate.resolve()
+
+
+def resolve_git_executable(project_root: Path, runtime_policy: Mapping[str, Any] | None = None) -> str:
+    project_root = project_root.resolve()
+    candidates: list[Path] = []
+
+    for env_name in _git_env_var_names(runtime_policy):
+        raw_value = os.environ.get(env_name)
+        if raw_value and raw_value.strip():
+            candidates.append(_candidate_git_path(project_root, raw_value.strip()))
+
+    if runtime_policy is not None:
+        configured = runtime_policy.get("preferred_git_executable")
+        if isinstance(configured, str) and configured.strip():
+            candidates.append(_candidate_git_path(project_root, configured.strip()))
+
+    on_path = shutil.which("git")
+    if on_path:
+        return on_path
+
+    for relative_candidate in PORTABLE_GIT_RELATIVE_CANDIDATES:
+        candidates.append((project_root.parent / relative_candidate).resolve())
+
+    for candidate in candidates:
+        if candidate.exists():
+            return str(candidate)
+    return "git"
+
+
 def ensure_repo_runtime(project_root: Path, runtime_policy: Mapping[str, Any]) -> dict[str, str]:
     project_root = project_root.resolve()
     expected_python = _read_expected_python_version(project_root, runtime_policy)
@@ -80,6 +133,7 @@ def ensure_repo_runtime(project_root: Path, runtime_policy: Mapping[str, Any]) -
         "python_executable": str(executable),
         "required_venv_path": str(expected_venv),
         "env_bootstrap_script": str(env_bootstrap),
+        "git_executable": resolve_git_executable(project_root, runtime_policy),
     }
 
 

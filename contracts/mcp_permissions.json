@@ -1,0 +1,35 @@
+{
+  "Coordinator": {
+    "allowed_servers": [],
+    "allowed_tools": []
+  },
+  "Builder": {
+    "allowed_servers": [
+      "codex-local"
+    ],
+    "allowed_tools": [
+      "codex",
+      "codex-reply"
+    ]
+  },
+  "Runner": {
+    "allowed_servers": [],
+    "allowed_tools": []
+  },
+  "Watcher": {
+    "allowed_servers": [],
+    "allowed_tools": []
+  },
+  "Verifier": {
+    "allowed_servers": [],
+    "allowed_tools": []
+  },
+  "Auditor": {
+    "allowed_servers": [],
+    "allowed_tools": []
+  },
+  "DependencyAgent": {
+    "allowed_servers": [],
+    "allowed_tools": []
+  }
+}

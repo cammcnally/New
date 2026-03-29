@@ -1,0 +1,6 @@
+{
+  "current_phase1_hierarchy_is_canonical": true,
+  "composite_promotion_score_primary": false,
+  "composite_promotion_score_allowed_only_if_contract_changes": true,
+  "silent_promotion_doctrine_change_forbidden": true
+}

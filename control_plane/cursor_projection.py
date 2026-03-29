@@ -98,17 +98,42 @@ def build_cursor_projection(project_root: Path) -> Mapping[str, str]:
             "Compatibility shim for the canonical skills registry.",
             dedent(
                 """\
-                The canonical skills registry lives in `AGENTS.md`.
+                Canonical skill authority lives in:
+
+                - `AGENTS.md`
+                - `.agents/skills/*`
 
                 Local Cursor skill aliases currently project these canonical entries:
 
                 - `phase1-validation-runbook`
                 - `pipeline-test-author`
                 - `artifact-schema-inspector`
-                - `pipeline-maintainer`
                 - `pipeline-runner-recovery`
+                - `control-plane-bootstrap-repair`
+                - `runtime-cutover-3119`
+
+                Do not treat `.cursor/skills/*` as canonical.
                 """
             ),
+        ),
+        ".cursor/rules/no-global-pytest.mdc": dedent(
+            """\
+            ---
+            description: Forbid bare/global pytest entrypoints; require repo-local invocation.
+            alwaysApply: true
+            ---
+
+            # No Global Pytest
+
+            Do not use bare `pytest` as the canonical repo entrypoint.
+
+            Allowed forms:
+
+            - `.venv\\Scripts\\python.exe -m pytest ...`
+            - `.venv/bin/python -m pytest ...`
+
+            If a command or doc surface still uses bare `pytest`, fix it.
+            """
         ),
         ".cursor/rules/invoke-verifier-after-edits.mdc": _mdc(
             "Invoke Verifier After Edits",
@@ -185,6 +210,7 @@ def build_cursor_projection(project_root: Path) -> Mapping[str, str]:
             "Local compatibility shim for canonical runtime actions:\n\n"
             "- `run_tests_marker`\n"
             "- `run_tests_all`\n"
+            "- `run_tests_scoped`\n"
             "- `phase1_sanity_check`\n\n"
             "Use the smallest correct tier, then let the verifier record the authoritative result.\n"
         ),
@@ -273,6 +299,28 @@ def build_cursor_projection(project_root: Path) -> Mapping[str, str]:
             Read-only inspection only.
             """
         ),
+        ".cursor/agents/pipeline-runner.md": dedent(
+            """\
+            ---
+            name: pipeline-runner
+            ---
+
+            This local alias maps to the canonical `Runner` role in `AGENTS.md`.
+            Use only repo-local commands and approved skills.
+            Never self-certify completion; hand off to `verifier`.
+            """
+        ),
+        ".cursor/agents/dependency-agent.md": dedent(
+            """\
+            ---
+            name: dependency-agent
+            ---
+
+            This local alias maps to the canonical `DependencyAgent` role in `AGENTS.md`.
+            Only propose or install dependencies allowed by policy.
+            Every dependency change must be pinned, tested, and handed to `verifier`.
+            """
+        ),
     }
 
     skills: dict[str, str] = {}
@@ -280,10 +328,11 @@ def build_cursor_projection(project_root: Path) -> Mapping[str, str]:
         skill_path = str(spec.get("path", ""))
         if not skill_path:
             continue
-        skills[skill_path] = dedent(
+        projected_path = skill_path.replace(".agents/skills/", ".cursor/skills/")
+        skills[projected_path] = dedent(
             f"""\
             ---
-            name: {Path(skill_path).parent.name}
+            name: {Path(projected_path).parent.name}
             description: Compatibility projection of the canonical `{skill_name}` skill registry entry from `AGENTS.md`.
             ---
 
@@ -292,7 +341,7 @@ def build_cursor_projection(project_root: Path) -> Mapping[str, str]:
             Canonical authority:
 
             - `AGENTS.md`
-            - `README.md`
+            - `.agents/skills/*`
             - the Phase 1 governance docs under `docs/`
 
             Local purpose:
@@ -306,7 +355,13 @@ def build_cursor_projection(project_root: Path) -> Mapping[str, str]:
     projection.update(commands)
     projection.update(agents)
     projection.update(skills)
-    projection[".cursor/projection_manifest.json"] = '{\n  "generated_by": "tools/render_cursor_projection.py",\n  "source_of_truth": "AGENTS.md"\n}\n'
+    projection[".cursor/projection_manifest.json"] = (
+        '{\n'
+        '  "generated_by": "tools/render_cursor_projection.py",\n'
+        '  "source_of_truth": "AGENTS.md",\n'
+        '  "canonical_skill_root": ".agents/skills"\n'
+        '}\n'
+    )
     return projection
 
 

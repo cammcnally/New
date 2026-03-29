@@ -11,7 +11,7 @@ from typing import Any, Callable, Mapping, Optional
 from .codex_mcp import CodexMCPBackend
 from .models import ApprovalClass, TaskClassification, TaskWorkspace, TerminalState, ensure_allowed_role, render_command
 from .policy_loader import load_bootstrapped_policy
-from .runtime_env import ensure_repo_runtime, load_repo_secret
+from .runtime_env import ensure_repo_runtime, load_repo_secret, resolve_git_executable
 from .task_state import (
     append_state_transition,
     create_task_workspace,
@@ -145,8 +145,9 @@ class CodexControlPlane:
         return tuple()
 
     def _collect_repo_changes(self) -> list[str]:
+        git_executable = resolve_git_executable(self.project_root, self.policy.runtime_environment)
         result = subprocess.run(
-            ["git", "status", "--short"],
+            [git_executable, "status", "--short"],
             cwd=self.project_root,
             check=False,
             capture_output=True,

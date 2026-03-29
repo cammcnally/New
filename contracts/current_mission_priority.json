@@ -1,0 +1,10 @@
+{
+  "finish_current_governed_phase1_mission_first": true,
+  "required_before_platform_broadening": [
+    "full_clean_pytest",
+    "trust_policy_pass",
+    "validate_bootstrap_pass",
+    "smoke_tier_1_pass",
+    "deterministic_validation_pass"
+  ]
+}

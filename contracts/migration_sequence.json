@@ -1,0 +1,23 @@
+{
+  "order": [
+    ".python-version",
+    "pyproject.toml",
+    "Pipeline.py",
+    "control_plane/runtime_env.py",
+    "AGENTS.md",
+    "tests/test_control_plane_policy.py",
+    "tests/test_control_plane_runtime.py",
+    "tests/test_cursor_projection.py",
+    ".codex/config.toml",
+    ".codex/hooks.json",
+    ".codex/agents/*",
+    ".agents/skills/*",
+    "tools/refresh_loader_manifest.py",
+    "tools/refresh_bootstrap_locks.py",
+    "tools/refresh_projection_lock.py",
+    "tools/verify_runtime.py",
+    "tools/verify_tracked_locks.py",
+    "tools/verify_frozen_surfaces.py"
+  ],
+  "stop_if_any_previous_step_fails": true
+}

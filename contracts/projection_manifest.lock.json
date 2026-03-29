@@ -1,0 +1,5 @@
+{
+  "generated_by": "tools/render_cursor_projection.py",
+  "source_of_truth": "AGENTS.md",
+  "canonical_skill_root": ".agents/skills"
+}

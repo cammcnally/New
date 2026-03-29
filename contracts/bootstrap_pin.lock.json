@@ -1,0 +1,7 @@
+{
+  "loader_manifest_hash": "dc166af4a97f7a0d99252a11054334f65da1ce72b4c59be32b5aa89f5c8fc5fa",
+  "loader_manifest_path": "control_plane/loader_manifest.json",
+  "policy_fingerprint": "035ca7c528cfb967962ae948a12daa6fc9a1cfbe9a2c8c3847810bf9df907272",
+  "policy_path": "AGENTS.md",
+  "policy_version": "2026-03-22.1"
+}

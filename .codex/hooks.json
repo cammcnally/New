@@ -1,0 +1,32 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".venv/bin/python tools/verify_runtime.py",
+            "statusMessage": "Verifying runtime"
+          },
+          {
+            "type": "command",
+            "command": ".venv/bin/python tools/verify_tracked_locks.py",
+            "statusMessage": "Verifying tracked locks"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".venv/bin/python -m pytest -q tests/test_control_plane_policy.py tests/test_control_plane_runtime.py tests/test_cursor_projection.py",
+            "statusMessage": "Running targeted governance tests"
+          }
+        ]
+      }
+    ]
+  }
+}

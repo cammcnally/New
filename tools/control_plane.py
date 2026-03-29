@@ -7,8 +7,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-SUPPORTED_PYTHON_MIN = (3, 12, 10)
-SUPPORTED_PYTHON_MAX_EXCLUSIVE = (3, 13, 0)
+SUPPORTED_PYTHON_MIN = (3, 11, 9)
+SUPPORTED_PYTHON_MAX_EXCLUSIVE = (3, 12, 0)
 
 
 def _require_supported_python_version(version_info: tuple[int, int, int] | None = None) -> None:
@@ -36,8 +36,9 @@ from control_plane.codex_mcp import CodexMCPBackend
 from control_plane.models import TaskClassification
 from control_plane.orchestrator import CodexControlPlane
 from control_plane.policy_loader import load_bootstrapped_policy, load_canonical_policy_payload, trust_current_policy
-from control_plane.runtime_env import ensure_repo_runtime, load_repo_secret
+from control_plane.runtime_env import ensure_repo_runtime, load_repo_secret, resolve_git_executable
 from control_plane.task_state import write_approval_record
+from tools.refresh_bootstrap_locks import refresh_bootstrap_locks
 
 
 def _matches_protected_path(candidate_path: str, protected_path: str) -> bool:
@@ -57,8 +58,9 @@ def _load_policy(*, require_external_pin: bool, require_runtime_env: bool) -> ob
 
 
 def _collect_repo_changes() -> list[str]:
+    git_executable = resolve_git_executable(PROJECT_ROOT)
     result = subprocess.run(
-        ["git", "status", "--short"],
+        [git_executable, "status", "--short"],
         cwd=PROJECT_ROOT,
         check=False,
         capture_output=True,
@@ -75,7 +77,17 @@ def _collect_repo_changes() -> list[str]:
 
 def cmd_trust_policy(_: argparse.Namespace) -> int:
     destination = trust_current_policy(PROJECT_ROOT)
-    print(f"Trusted current policy at {destination}")
+    bootstrap_lock, policy_lock = refresh_bootstrap_locks(PROJECT_ROOT)
+    print(
+        json.dumps(
+            {
+                "trusted_bootstrap_pin": str(destination),
+                "bootstrap_lock": str(bootstrap_lock),
+                "policy_lock": str(policy_lock),
+            },
+            indent=2,
+        )
+    )
     return 0
 
 

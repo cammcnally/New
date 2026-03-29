@@ -12,6 +12,7 @@ from control_plane.policy_loader import (
     PolicyBootstrapError,
     compute_loader_manifest_hash,
     compute_policy_fingerprint_from_payload,
+    load_bootstrap_pin,
     load_bootstrapped_policy,
     load_canonical_policy_payload,
 )
@@ -67,10 +68,44 @@ def test_bootstrap_succeeds_with_matching_combined_pin(monkeypatch: pytest.Monke
     assert "review_outputs.json" in policy.required_task_files()
 
 
+def test_bootstrap_defaults_point_to_tracked_contracts() -> None:
+    payload = load_canonical_policy_payload(PROJECT_ROOT / "AGENTS.md")
+    bootstrap = payload["bootstrap_policy"]
+    assert bootstrap["external_bootstrap_pin_default"] == "contracts/bootstrap_pin.lock.json"
+    assert bootstrap["legacy_external_policy_pin_default"] == "contracts/policy_fingerprint.lock.json"
+
+
+def test_bootstrap_does_not_silently_use_legacy_policy_env_when_external_pin_is_required(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    legacy_pin = tmp_path / "legacy.json"
+    legacy_pin.write_text(json.dumps({"fingerprint": "legacy-only"}), encoding="utf-8")
+    monkeypatch.setenv("CODEX_BOOTSTRAP_PIN_FILE", str(tmp_path / "missing.json"))
+    monkeypatch.setenv("CODEX_POLICY_FINGERPRINT_FILE", str(legacy_pin))
+    with pytest.raises(PolicyBootstrapError):
+        load_bootstrapped_policy(PROJECT_ROOT)
+
+
+def test_tracked_policy_fingerprint_contract_is_accepted(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    payload = load_canonical_policy_payload(PROJECT_ROOT / "AGENTS.md")
+    policy_lock = tmp_path / "policy_fingerprint.lock.json"
+    policy_lock.write_text(json.dumps({"policy_fingerprint": "abc123"}), encoding="utf-8")
+
+    monkeypatch.setenv("CODEX_BOOTSTRAP_PIN_FILE", str(tmp_path / "missing.json"))
+    monkeypatch.setenv("CODEX_POLICY_FINGERPRINT_FILE", str(policy_lock))
+
+    pin_path, pin_payload = load_bootstrap_pin(PROJECT_ROOT, payload, allow_legacy=True)
+
+    assert pin_path == policy_lock
+    assert pin_payload is not None
+    assert pin_payload["policy_fingerprint"] == "abc123"
+    assert pin_payload["format"] == "policy_fingerprint_only"
+
+
 def test_repo_runtime_rejects_non_repo_interpreter(monkeypatch: pytest.MonkeyPatch) -> None:
     policy = load_canonical_policy_payload(PROJECT_ROOT / "AGENTS.md")
     runtime_policy = policy["runtime_environment"]
-    monkeypatch.setattr("control_plane.runtime_env.platform.python_version", lambda: "3.12.10")
+    monkeypatch.setattr("control_plane.runtime_env.platform.python_version", lambda: "3.11.9")
     monkeypatch.setattr(sys, "executable", r"C:\Python312\python.exe")
     with pytest.raises(RuntimeEnvironmentError):
         ensure_repo_runtime(PROJECT_ROOT, runtime_policy)

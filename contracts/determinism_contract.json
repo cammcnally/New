@@ -1,0 +1,10 @@
+{
+  "pythonhashseed": 42,
+  "python_random_seed": 42,
+  "numpy_seed": 42,
+  "optuna_seed": 42,
+  "single_thread_required_for_canonical_rerun": true,
+  "float_abs_tolerance": 1e-08,
+  "float_rel_tolerance": 1e-06,
+  "time_series_abs_tolerance": 1e-08
+}

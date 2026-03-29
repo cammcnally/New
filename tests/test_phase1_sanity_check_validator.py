@@ -20,7 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def _base_contract(artifacts: dict[str, dict[str, object]]) -> dict[str, object]:
     return {
         "schema_version": "test",
-        "python": {"min": "3.12.10", "max_exclusive": "3.13.0"},
+        "python": {"min": "3.11.9", "max_exclusive": "3.12.0"},
         "invariants": {},
         "legacy_surfaces": {
             "resume_state": "resume_state.json",
