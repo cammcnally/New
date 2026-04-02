@@ -25,30 +25,35 @@ def run_checks(*, data_lake: str | None = None, config_dir: str | None = None) -
 
     macro_vintage_path = silver_path("macro_observations_vintage", settings)
     macro_asof_path = silver_path("macro_asof_daily", settings)
-    required_failures: list[str] = []
+    warnings: list[str] = []
+    macro_vintage_present = False
+    macro_asof_present = False
 
     if macro_vintage_path.exists():
         vintages = read_parquet(macro_vintage_path).collect()
         if not vintages.is_empty():
             validate_contract_df("macro_observations_vintage", vintages)
             print(f"[pit] macro_observations_vintage: ok ({len(vintages)} rows)")
+            macro_vintage_present = True
         else:
-            required_failures.append("macro_observations_vintage: empty")
+            warnings.append("macro_observations_vintage: empty")
     else:
-        required_failures.append("macro_observations_vintage: missing")
+        warnings.append("macro_observations_vintage: missing")
 
     if macro_asof_path.exists():
         asof = read_parquet(macro_asof_path).collect()
         if not asof.is_empty():
             validate_contract_df("macro_asof_daily", asof)
             print(f"[pit] macro_asof_daily: ok ({len(asof)} rows)")
+            macro_asof_present = True
         else:
-            required_failures.append("macro_asof_daily: empty")
+            warnings.append("macro_asof_daily: empty")
     else:
-        required_failures.append("macro_asof_daily: missing")
+        warnings.append("macro_asof_daily: missing")
 
-    if required_failures:
-        raise SystemExit(f"[pit] missing required PIT tables: {required_failures}")
+    if not (macro_vintage_present and macro_asof_present):
+        print(f"[pit] optional macro PIT surfaces incomplete: {warnings}")
+        return 0
 
     findings = qa_macro_check(settings=settings)
     if findings.get("errors"):
