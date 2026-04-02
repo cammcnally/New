@@ -1,0 +1,50 @@
+universes:
+  all_us_common_daily:
+    description: >
+      Full daily universe of U.S. common stocks.
+      Rules-based membership -- not official index constituents.
+    filters:
+      country: US
+      asset_types:
+        - common_stock
+      exclude_types:
+        - etf
+        - preferred
+        - warrant
+        - adr
+      require_active_or_historical: true
+      min_price: 1.0
+      min_avg_volume_20d: 50000
+      min_listing_age_days: 30
+      include_delisted_within_window: true
+
+  intraday_core_30m:
+    description: >
+      Limited intraday universe for 30-minute bars.
+      ETFs and curated equities only.
+    members:
+      broad_market:
+        - SPY
+        - QQQ
+        - IWM
+        - DIA
+      duration:
+        - TLT
+        - IEF
+        - SHY
+      credit:
+        - HYG
+        - LQD
+      sectors:
+        - XLB
+        - XLE
+        - XLF
+        - XLI
+        - XLK
+        - XLP
+        - XLU
+        - XLV
+        - XLY
+        - XLRE
+        - XLC
+      curated_equities: []

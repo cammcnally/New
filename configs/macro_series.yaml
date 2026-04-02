@@ -1,0 +1,63 @@
+series:
+  - id: DFF
+    name: Effective Federal Funds Rate
+    freq: daily
+    use_vintages: true
+    max_forward_fill_days: 5
+    availability_fallback_policy: next_nyse_open_after_vintage_date
+
+  - id: DGS2
+    name: 2-Year Treasury
+    freq: daily
+    use_vintages: true
+    max_forward_fill_days: 5
+    availability_fallback_policy: next_nyse_open_after_vintage_date
+
+  - id: DGS10
+    name: 10-Year Treasury
+    freq: daily
+    use_vintages: true
+    max_forward_fill_days: 5
+    availability_fallback_policy: next_nyse_open_after_vintage_date
+
+  - id: T10Y2Y
+    name: 10Y-2Y Spread
+    freq: daily
+    use_vintages: true
+    max_forward_fill_days: 5
+    availability_fallback_policy: next_nyse_open_after_vintage_date
+
+  - id: UNRATE
+    name: Unemployment Rate
+    freq: monthly
+    use_vintages: true
+    max_forward_fill_days: 45
+    availability_fallback_policy: next_nyse_open_after_vintage_date
+
+  - id: ICSA
+    name: Initial Claims
+    freq: weekly
+    use_vintages: true
+    max_forward_fill_days: 10
+    availability_fallback_policy: next_nyse_open_after_vintage_date
+
+  - id: INDPRO
+    name: Industrial Production
+    freq: monthly
+    use_vintages: true
+    max_forward_fill_days: 45
+    availability_fallback_policy: next_nyse_open_after_vintage_date
+
+  - id: GDP
+    name: Gross Domestic Product
+    freq: quarterly
+    use_vintages: true
+    max_forward_fill_days: 120
+    availability_fallback_policy: next_nyse_open_after_vintage_date
+
+  - id: USREC
+    name: Recession Indicator
+    freq: monthly
+    use_vintages: true
+    max_forward_fill_days: 45
+    availability_fallback_policy: next_nyse_open_after_vintage_date

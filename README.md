@@ -1,542 +1,310 @@
-# Swing Trading Research Pipeline
+# Canonical Market Data And Research Pipeline
 
 Repository: [https://github.com/cammcnally/new](https://github.com/cammcnally/new)
 
-This repository contains a walk-forward, purged/embargoed, probability-calibrated swing-trading research pipeline for US equities. The current system is Phase 1 governed: it freezes the threshold-search correction boundary, uses stitched outer-test validation for decision metrics, enforces ranking-map guardrails, and treats occupancy as diagnostic only.
+This repository now has two explicit layers:
 
-This README is the operational bible for the repository. It explains:
+1. `market_data` is the canonical market-data platform and source of truth.
+2. `Pipeline.py` is the downstream Phase 1 research pipeline that consumes a derived/exported compatibility surface.
 
-- what the pipeline does
-- what it is trying to do
-- how the current logic works
-- how the control plane governs changes
-- how to run, test, and validate it
-- which artifacts matter and how to read them
+The repo's center of gravity is no longer a panel CSV. The panel export exists so the downstream research system can continue to run while canonical data contracts, verification, and bridge surfaces are hardened.
 
-If you are changing behavior that affects statistics, promotion rules, outputs, or recovery, read `AGENTS.md` and the Phase 1 docs first.
+## Authority
 
-## Authority And Scope
-
-The canonical governance sources for this repo are:
+Canonical governance and semantics live in:
 
 - `AGENTS.md`
+- `docs/data_contract.md`
 - `docs/phase1-research-spec.md`
 - `docs/phase1-execution-roadmap.md`
 
-The README is descriptive. The Phase 1 docs are normative for research semantics. If code and these docs disagree, the docs win until the change is intentionally made and documented.
+Authority boundaries:
 
-**Platform authority:** Linux CI is the canonical release authority. Windows may be used for development. WSL is the preferred local parity environment for agent-driven work and final testing.
+- `docs/data_contract.md` is normative for the market-data layer.
+- `docs/phase1-research-spec.md` and `docs/phase1-execution-roadmap.md` are normative for downstream Phase 1 research semantics.
+- `README.md` is the operator-facing architecture and workflow guide. It must stay synchronized with code and contract changes.
 
-This repo is intentionally narrower than a full data-platform rebuild. It currently focuses on:
+If these surfaces disagree, update the stale document rather than inferring a new architecture from outdated text.
 
-- a single research pipeline
-- a single panel-driven input format
-- deterministic, auditable research outputs
-- reproducible validation and promotion logic
-- local-first control-plane enforcement
+**Platform authority:** Linux CI is the canonical release authority. Windows may be used for development. WSL is the preferred local parity environment for agent-driven work and final validation.
 
-It is not a live broker stack, not a scheduler-driven platform, and not a full ingestion lakehouse.
+## Architecture
 
-## What The Pipeline Does
+```mermaid
+flowchart LR
+  rawSources[RawSources] --> bronzeLayer[BronzeParquet]
+  bronzeLayer --> silverLayer[CanonicalSilver]
+  silverLayer --> quarantineLayer[QuarantineAndExclusion]
+  silverLayer --> optionalLayer[OptionalEnrichment]
+  silverLayer --> qaLayer[VerificationAndDuckDBAudits]
+  optionalLayer --> exportBridge[ExportBridge]
+  silverLayer --> exportBridge
+  exportBridge --> panelSurface[DerivedPanelCompatibilitySurface]
+  panelSurface --> pipelinePy[Pipeline.py]
+```
 
-At a high level, the pipeline:
+### Canonical Market-Data Layer
 
-1. loads a panel CSV containing OHLCV rows and session flags
-2. verifies the panel shape, timestamp regularity, and duplicate conditions
-3. builds a feature matrix and feature registry
-4. generates long-event labels with stop/target and cost-aware logic
-5. runs expanding walk-forward outer folds with purged inner CV
-6. fits base models, meta-models, and calibration layers
-7. applies empirical probability mapping with ranking-map guardrails
-8. selects thresholds on an out-of-sample threshold holdout
-9. simulates a portfolio with capacity, liquidity, and replacement logic
-10. computes stitched policy daily returns and Phase 1 robustness metrics
-11. compares model assemblies and emits promotion-support scorecards
-12. writes durable artifacts, config snapshots, and resume state
+The canonical market-data platform owns:
 
-The design goal is not just to produce a backtest. It is to produce a backtest that can be explained, reproduced, audited, and resumed without hidden state.
+- instrument identity
+- source symbol mapping
+- daily prices
+- macro vintage storage and as-of materialization
+- benchmark semantics
+- verification and manifests
+- export bridge generation
 
-## Current Phase 1 Contract
+The simplest supported build story is:
 
-Phase 1 freezes the following core meanings:
+1. bronze preserves raw source truth
+2. silver decides canonical correctness, PIT, and quarantine
+3. gold and export publish only validated downstream-compatible surfaces
+
+Primary repo surfaces:
+
+- `market_data/common/`
+- `market_data/raw/`
+- `market_data/bronze/`
+- `market_data/silver/`
+- `market_data/gold/`
+- `market_data/qa/`
+- `market_data/bridge/`
+- `market_data/orchestration/`
+
+### Downstream Research Layer
+
+The downstream research pipeline owns:
+
+- feature engineering
+- labels
+- walk-forward and CPCV-style validation logic
+- model training and calibration
+- threshold search
+- portfolio simulation
+- robustness reporting
+- promotion logic
+
+Primary repo surfaces:
+
+- `Pipeline.py`
+- `feature_registry/`
+- `mlflow_integration/`
+- `tools/phase1_sanity_check.py`
+- `tests/test_phase1_*.py`
+
+## Source-Of-Truth Rules
+
+- `market_data` is the documented and enforced source of truth for data architecture.
+- `instrument_master` is canonical.
+- `instrument_symbol_history` is canonical.
+- required-core data determines canonical export readiness.
+- optional enrichments may improve context but must not become hidden authorities.
+- `security_master` is compatibility-only.
+- `security_master` must be auto-generated from canonical identity tables and treated as read-only compatibility output.
+- `Pipeline.py` must keep working through the export/compatibility bridge until all downstream consumers are migrated.
+- Macro joins must be point-in-time safe.
+- Canonical exports must satisfy both entity-PIT and time-PIT.
+- Benchmark/reference instruments must carry explicit semantic roles.
+- `VIXY` must never be treated as equivalent to `^VIX`.
+- Sector-relative features remain disabled unless valid date-effective classification support exists.
+
+## Surface Status
+
+### Canonical / Authoritative
+
+- `market_data/*`
+- `docs/data_contract.md`
+- market-data verification entrypoints under `tools/`
+- `AGENTS.md`
+- Phase 1 normative docs under `docs/phase1-*.md`
+
+### Compatibility-Only
+
+- `market_data/silver/security_master`
+- `market_data/bridge/export_pipeline_panel.py`
+- panel CSV exports such as `panel_ohlcv_clean.csv`
+- any legacy adapter that exists only to preserve `Pipeline.py` or other old consumers
+
+### Generated
+
+- `.cursor/*`
+- `contracts/*.lock.json`
+- loader/projection manifests
+- generated compatibility exports and manifests written by the runtime
+
+### Optional / Secondary
+
+- `mlflow_integration/`
+- `lineage/`
+- narrow `dvc.yaml` coverage for reproducibility-critical exports
+- `gx/` for top-level artifact validation where still useful
+
+### Deferred But Planned
+
+- authoritative historical classification membership
+- broader fundamentals PIT coverage
+- broader orchestration refactor or asset-graph migration
+- broader DVC expansion
+- expanded Dagster role
+- Prefect
+- lakeFS
+- broad MCP expansion
+
+See `docs/market_data_roadmap.md` for revisit conditions.
+
+## Valid Claims Today
+
+The repo may claim:
+
+- the market-data layer is the intended canonical source of truth
+- the research pipeline consumes a derived/exported compatibility surface
+- downstream Phase 1 semantics remain frozen unless changed through the normative governance path
+- threshold-family correction remains limited to the existing Phase 1 boundary
+
+The repo may not claim:
+
+- that all planned canonical tables are fully populated and decision-grade
+- that sector-relative classification logic is historically valid
+- that all deferred PIT domains are complete
+- that any downstream model or backtest result is comparable without a concrete dataset/export build reference
+
+## Market-Data Contract And Verification
+
+### PIT Disciplines
+
+The repo now treats PIT as two separate but mandatory laws:
+
+- `entity-PIT`: every exported row must resolve to the correct economic entity through canonical identity and date-effective source-symbol mapping
+- `time-PIT`: every exported row or enrichment must be eligible by the canonical session/public-availability cutoff
+
+The canonical build fails closed if either discipline is violated for exported data.
+
+### Required-Core And Optional-Enrichment
+
+The canonical market-data layer now distinguishes between:
+
+- `required-core`: identity, source-symbol mapping, OHLCV, session correctness, required benchmark/reference coverage, and export-safe compatibility labeling
+- `optional-enrichment`: macro, SEC/fundamentals, and other non-blocking enrichments that remain nullable and flagged when absent
+
+This is a simplification rule, not a second framework. Required-core drives export safety. Optional-enrichment may extend the export surface only when its own domain PIT rules are satisfied.
+
+### Export Safety
+
+Canonical export readiness means more than “QA had no fatal error”. A safe export must:
+
+- exclude or quarantine unresolved required-core rows
+- fail closed when compatibility fallback was used in canonical eligibility
+- carry `dataset_build_id` and `export_panel_version_id`
+- write coverage, unresolved-identity, quarantine, and final-status artifacts truthfully
+
+Read `docs/data_contract.md` before changing:
+
+- schema
+- PIT logic
+- benchmark semantics
+- compatibility bridge behavior
+- export contracts
+- orchestration critical path
+
+Highest-priority controls for this repo:
+
+1. Pandera contracts on canonical and bridge surfaces
+2. repo rules and hooks for `market_data` changes
+3. synchronized docs (`README.md` and `docs/data_contract.md`)
+4. reproducible export manifests and build IDs
+5. disciplined DuckDB + Parquet conventions
+6. MLflow tied to dataset/export build IDs
+7. narrow DVC for reproducibility-critical exports only
+
+## Phase 1 Research Boundary
+
+This work does **not** broaden downstream research claims.
+
+The Phase 1 non-negotiables remain:
 
 - `threshold_search_corrected = true`
 - `full_pipeline_corrected = false`
 - `trial_scope_formal = threshold_policy_search_only`
 - `trial_count_formal = 108`
-- `max_concurrent = 8` is a hard cap, not a target
+- `max_concurrent = 8` is a cap, not a target
 - occupancy is diagnostic only
-- stitched outer-test calendar-day returns are the basis for final robustness reporting
-- ranking-map guardrail failures make a run invalid, not just interesting
+- ranking-map guardrail failures invalidate a run
 
-Phase 1 also freezes the current statistical language:
+If you need to change those meanings, update `docs/phase1-research-spec.md` first.
 
-- adjusted Sharpe uses Newey-West HAC on calendar-day arithmetic returns
-- WRC is fold-local and threshold-family scoped
-- deflated Sharpe is reported on stitched outer-test daily returns
-- promotion is hierarchical and requires feature validation, model comparison, robustness, and portfolio-policy support
+## Repository Layout
 
-If you want to change any of those meanings, the docs must be updated first.
+| Path | Role |
+| ---- | ---- |
+| `market_data/` | Canonical data platform: ingest, normalize, build, verify, export |
+| `Pipeline.py` | Downstream Phase 1 research pipeline |
+| `docs/data_contract.md` | Normative data-layer contract |
+| `docs/phase1-research-spec.md` | Normative downstream research semantics |
+| `docs/phase1-execution-roadmap.md` | Ordered Phase 1 execution roadmap |
+| `docs/market_data_roadmap.md` | Deferred tooling and revisit conditions |
+| `tests/market_data/` | Market-data unit and contract tests |
+| `tests/test_phase1_*.py` | Downstream Phase 1 helper and smoke tests |
+| `tools/` | Verification, sanity-check, and control-plane entrypoints |
+| `.github/workflows/` | CI and reusable verification workflows |
+| `.codex/hooks.json` | Local automation hooks |
 
-## Repository Structure
+## Setup
 
-```
-swing-pipeline/
-├── Pipeline.py                          # Main research pipeline (~7,200 lines)
-├── AGENTS.md                            # Canonical policy, agent registry, autonomy contract
-├── README.md                            # This file
-├── PLANS.md                             # Execution plans for multi-step work
-├── pyproject.toml                       # Python project config with dependency groups
-├── uv.lock                             # Deterministic dependency lockfile (218 packages)
-├── .python-version                      # Pinned Python 3.11.9
-├── dvc.yaml                             # DVC pipeline stages (train, evaluate)
-├── Makefile                             # Build targets: sync, test, verify, regenerate
-├── pytest.ini                           # Test configuration (markers: helper, regression, smoke)
-├── panel_ohlcv_clean.csv                # Primary OHLCV panel data (LFS-tracked, ~351k rows)
-├── panel_ohlcv_smoke_tier1.csv          # Smaller smoke-test panel
-├── package.json / package-lock.json     # Node deps (Codex SDK)
-├── .gitattributes                       # LFS tracking rules
-├── .gitignore                           # Ignore patterns
-│
-├── control_plane/                       # Custom governance and orchestration runtime
-│   ├── models.py                        #   Policy, agent, action data models + LoadedPolicy
-│   ├── policy_loader.py                 #   AGENTS.md JSON parser + bootstrap validation
-│   ├── orchestrator.py                  #   Task routing, role enforcement, action execution
-│   ├── task_state.py                    #   Task workspace scaffold and state management
-│   ├── codex_mcp.py                     #   Codex MCP backend integration
-│   ├── runtime_env.py                   #   Python version and venv validation
-│   ├── cursor_projection.py             #   .cursor/* generation from AGENTS.md
-│   ├── loader_manifest.json             #   SHA256 integrity hashes for control-plane files
-│   ├── governance_registries.json       #   Agent/tool/grader metadata for orchestrator
-│   ├── phase1_contract.json             #   Phase 1 artifact schema and validation rules
-│   ├── assessment_registry.json         #   Assessment tracking metadata
-│   └── policies/                        #   Extracted supplementary policy configs
-│       ├── action_registry.json         #     Pipeline/test/audit action definitions
-│       ├── task_scaffolding.json        #     Task workspace file requirements
-│       ├── trace_security.json          #     Trace capture and redaction settings
-│       ├── cloud_delegation.json        #     Cloud vs local execution rules
-│       ├── review_and_approval.json     #     Structured review, approval, verifier config
-│       ├── cookbook_policy.json          #     External cookbook idea screening gates
-│       └── execplan_policy.json         #     Execution plan requirements
-│
-├── dagster_pipeline/                    # Dagster asset layer (wraps Pipeline.py functions)
-│   ├── definitions.py                   #   Dagster Definitions entry point
-│   ├── resources.py                     #   PipelineConfigResource (mirrors PipelineConfig)
-│   └── assets/                          #   One asset per pipeline stage
-│       ├── ingestion.py                 #     load_panel + verify_panel
-│       ├── features.py                  #     build_feature_matrix
-│       ├── labeling.py                  #     label_long_events + filtering
-│       ├── training.py                  #     build_outer_folds + fit_outer_fold loop
-│       ├── evaluation.py                #     Aggregate metrics and robustness checks
-│       └── reports.py                   #     write_markdown_report
-│
-├── feature_registry/                    # Feature definitions and PIT retrieval
-│   ├── definitions.py                   #   FeatureDef dataclass, PITSafety enum
-│   ├── registry.py                      #   FeatureRegistry: load, validate, query features
-│   ├── retrieval.py                     #   pit_merge (merge_asof), PIT correctness validation
-│   ├── features.yml                     #   YAML registry of 9 core features
-│   └── tests/                           #   PIT retrieval and anti-leakage tests
-│       ├── test_pit_retrieval.py
-│       └── test_anti_leakage.py
-│
-├── mlflow_integration/                  # MLflow experiment tracking and model registry
-│   ├── tracking.py                      #   pipeline_run_context, log_fold/aggregate metrics
-│   └── registry.py                      #   register_model_candidate, promote, get_champion
-│
-├── lineage/                             # OpenLineage event emission
-│   ├── emitter.py                       #   PipelineLineageEmitter (START/COMPLETE/FAIL)
-│   ├── backend.py                       #   FileTransport (JSON event files)
-│   ├── facets.py                        #   Custom facets for pipeline config and schema
-│   └── tests/
-│       └── test_emitter.py              #   Event structure tests
-│
-├── gx/                                  # Great Expectations data contracts
-│   ├── great_expectations.yml           #   GX context configuration
-│   └── expectations/                    #   Expectation suites
-│       ├── raw_panel_ingest.json        #     Panel CSV column/value validation
-│       ├── model_ready_dataset.json     #     Feature + label completeness checks
-│       ├── fold_metrics.json            #     Per-fold metric column validation
-│       └── trade_blotter.json           #     Trade record field validation
-│
-├── tests/                               # Pytest test suite
-│   ├── conftest.py                      #   Root path setup
-│   ├── test_phase1_regression.py        #   Pipeline helper regressions
-│   ├── test_phase1_smoke.py             #   Phase 1 sanity-check smoke tests
-│   ├── test_phase1_helpers.py           #   Pipeline helper behavior tests
-│   ├── test_phase1_sanity_check_validator.py  # Sanity check tool validation
-│   ├── test_control_plane_policy.py     #   Control-plane policy tests
-│   ├── test_control_plane_runtime.py    #   Control-plane runtime tests
-│   ├── test_cursor_projection.py        #   Cursor projection rendering tests
-│   ├── test_assessment_lifecycle.py     #   Assessment lifecycle tests
-│   └── test_archive_no_authority.py     #   Archive/evidence separation enforcement
-│
-├── tools/                               # CLI tools and verification scripts
-│   ├── control_plane.py                 #   Control-plane CLI (trust, validate, run-task)
-│   ├── render_cursor_projection.py      #   Regenerate .cursor/* from AGENTS.md (--check mode)
-│   ├── phase1_sanity_check.py           #   Pipeline output artifact validator
-│   ├── verify_runtime.py                #   Python version and venv validation
-│   ├── verify_tracked_locks.py          #   Bootstrap/policy/projection lock verification
-│   ├── verify_frozen_surfaces.py        #   Frozen file existence verification
-│   ├── refresh_bootstrap_locks.py       #   Regenerate bootstrap lock files
-│   ├── refresh_loader_manifest.py       #   Regenerate loader manifest hashes
-│   ├── refresh_projection_lock.py       #   Regenerate projection lock
-│   ├── migrate_repo_env.py              #   Repository environment migration utility
-│   └── enter_e_drive_env.ps1            #   Windows PowerShell env bootstrap convenience
-│
-├── contracts/                           # Enforced lock files and manifests
-│   ├── bootstrap_pin.lock.json          #   Policy fingerprint + loader manifest hash pin
-│   ├── policy_fingerprint.lock.json     #   Legacy policy fingerprint pin
-│   ├── projection_manifest.lock.json    #   Cursor projection generation metadata
-│   └── frozen_surfaces_manifest.json    #   Required file existence manifest
-│
-├── docs/                                # Documentation and evidence
-│   ├── phase1-research-spec.md          #   Frozen Phase 1 research semantics
-│   ├── phase1-execution-roadmap.md      #   Phase 1 execution stages and status
-│   ├── contract-inventory.md            #   Contract enforcement audit
-│   ├── pipeline-assessment.md           #   Pipeline validity and health assessment
-│   ├── assessments/                     #   Latest assessment snapshots
-│   └── archive/                         #   Historical evidence (read-only, non-authoritative)
-│       ├── README.md                    #     Archive non-authority statement
-│       ├── contracts/                   #     Retired governance contracts (8 files)
-│       └── assessments/                 #     Dated historical assessments
-│
-├── .github/workflows/                   # GitHub Actions CI/CD
-│   ├── ci.yml                           #   Main CI: tests, contracts, data, drift checks
-│   ├── release.yml                      #   8-layer release gate with env approval
-│   ├── promote-model.yml                #   Model promotion with reviewer approval
-│   ├── _test.yml                        #   Reusable: pytest + feature/lineage tests
-│   ├── _contracts.yml                   #   Reusable: verify locks, surfaces, runtime
-│   ├── _data-contracts.yml              #   Reusable: GE suite validation
-│   ├── _lineage-check.yml               #   Reusable: OpenLineage module validation
-│   └── _regenerate-check.yml            #   Reusable: cursor projection drift check
-│
-├── .agents/skills/                      # Canonical agent skill definitions
-│   ├── phase1-validation-runbook/       #   Decision-grade validation guidance
-│   ├── pipeline-test-author/            #   Test authoring workflow
-│   ├── artifact-schema-inspector/       #   Artifact schema inspection
-│   ├── pipeline-runner-recovery/        #   Pipeline run/resume/recovery guidance
-│   ├── control-plane-bootstrap-repair/  #   Bootstrap lock repair workflow
-│   └── runtime-cutover-3119/            #   Python 3.11.9 cutover steps
-│
-├── .cursor/                             # Generated Cursor IDE compatibility (from AGENTS.md)
-│   ├── projection_manifest.json         #   Generation metadata
-│   ├── settings.json                    #   Cursor plugin settings
-│   ├── rules/                           #   11 .mdc rule files (compatibility shims)
-│   ├── skills/                          #   6 projected skill stubs
-│   ├── agents/                          #   6 agent alias definitions
-│   └── commands/                        #   6 command definitions
-│
-├── .codex/                              # Codex CLI agent and hook configuration
-│   ├── config.toml                      #   Model, sandbox, and skill config
-│   ├── hooks.json                       #   Session start/stop verification hooks
-│   └── agents/                          #   4 agent definitions (verifier, implementer, etc.)
-│
-├── .dvc/                                # DVC configuration
-│   ├── config                           #   Remote storage config (local)
-│   └── .gitignore                       #   DVC cache/tmp ignores
-│
-└── .vscode/                             # VS Code workspace settings
-    ├── settings.json
-    └── extensions.json
+### Core Development Environment
+
+```bash
+uv sync --group dev --group control-plane --group ingestion --group ingestion-test
 ```
 
-### Generated vs Canonical vs Local-only
+Additional optional groups:
 
-| Surface | Authority | How maintained |
-|---------|-----------|----------------|
-| `.agents/skills/*` | Canonical | Edited directly |
-| `.cursor/*` | Generated | `python tools/render_cursor_projection.py` from AGENTS.md |
-| `control_plane/policies/*` | Canonical | Loaded by `LoadedPolicy` at runtime |
-| `contracts/*.lock.json` | Tracked | `tools/refresh_bootstrap_locks.py` after trust |
-| `docs/archive/*` | Evidence-only | Read-only historical record, no runtime authority |
-| `pipeline_outputs_smoke/` | Local-only | Regenerable run output, gitignored |
+```bash
+uv sync --group dev --group control-plane --group ingestion --group ingestion-test --group ml --group data --group lineage --group orchestrator
+```
 
-## Pipeline Architecture
+## Common Workflows
 
-### 1. Input And Verification
+### 1. Run The Authoritative Local E2E Flow
 
-The pipeline expects a panel CSV with columns:
+```powershell
+make e2e
+uv run python tools/run_repo_e2e.py
+uv run python tools/run_repo_e2e.py --resume
+uv run python tools/run_repo_e2e.py --from-stage verify_market_data
+uv run python tools/run_repo_e2e.py --stop-after export_panel
+```
 
-- `ticker`
-- `timestamp_utc`
-- `open`
-- `high`
-- `low`
-- `close`
-- `volume`
-- `is_incomplete_session`
+This is the canonical local operator path. It:
 
-The loader sorts by `ticker` and `timestamp_utc`, parses timestamps as UTC, and coerces incomplete-session flags to booleans.
+- syncs required dependency groups
+- refreshes canonical market-data state through the shared raw -> bronze -> silver -> gold -> QA path
+- writes `data_lake/manifests/dataset_manifest.json`
+- writes coverage, unresolved-identity, quarantine, and final-status reports under `data_lake/`
+- enforces docs-sync, contract, PIT, compat, and bridge gates
+- exports `panel_ohlcv_clean.csv` plus a verified sidecar manifest
+- runs `Pipeline.py`
+- writes e2e state and status artifacts under `data_lake/manifests/`
 
-The panel verifier checks:
+### 2. Bootstrap Or Sync Canonical Data
 
-- required columns are present
-- duplicate `(ticker, timestamp_utc)` rows are absent
-- timestamps are monotonic within each ticker
-- timestamp regularity is summarized by ticker
-- scattered gaps and late-start tickers are diagnosed rather than silently ignored
+```powershell
+.\.venv\Scripts\python.exe -m market_data.cli bootstrap --start-date 2010-01-01
+.\.venv\Scripts\python.exe -m market_data.cli sync
+```
 
-This is the first line of defense against broken input data.
+### 3. Export The Compatibility Surface
 
-### 2. Feature Engineering
+```powershell
+.\.venv\Scripts\python.exe -m market_data.cli export-latest --output panel_ohlcv_clean.csv
+.\.venv\Scripts\python.exe -m market_data.cli export-asof --asof-date 2026-01-15 --output panel_ohlcv_clean.csv
+```
 
-The feature layer builds a registry-backed matrix of engineered features. The feature families include:
+Each export should carry a sidecar manifest at `<panel>.manifest.json` with `dataset_build_id` and `export_panel_version_id`.
+The bridge now fails closed unless the dataset manifest marks the canonical build `canonical_export_ready = true` and `compatibility_fallback_used = false`.
+Direct `Pipeline.py` runs are valid only when that sidecar exists and carries both build references.
 
-- returns
-- RSI
-- MACD
-- ATR
-- Bollinger-style signals
-- volume-derived signals
-- cross-sectional z-scores
-- optional physics/regime features
-
-The feature registry is persisted so the pipeline can distinguish:
-
-- named features
-- default-enabled features
-- available vs unavailable features
-- family coverage
-
-Feature validation is not just correlation checking. It includes:
-
-- cross-sectional Spearman IC
-- HAC t-stats
-- sign stability
-- regime stability
-- monotonicity checks
-- incremental lift after costs
-- explicit `insufficient_data` handling
-
-### 3. Label Generation
-
-The current label path uses a long-event framing with:
-
-- entry at the next open
-- ATR-based stop/target logic
-- cost-aware returns
-- stop-first handling when stop and target are hit on the same bar
-
-The pipeline produces a `forward_label_return_net` field and a binary `long_win` label. Those are the current research labels, and they drive model training, calibration, IC checks, and threshold-selection logic.
-
-### 4. Walk-Forward Splitting
-
-The outer split logic is expanding-window walk-forward with chronology protection.
-
-Current guardrails include:
-
-- outer-boundary purging
-- purged inner CV
-- threshold holdout separation
-- calibration holdout separation
-- embargo bars to reduce leakage risk
-
-The pipeline is designed to keep validation chronology-safe. It is not a random K-fold experiment runner.
-
-### 5. Model Training And Calibration
-
-The current model stack is a classic tabular ensemble:
-
-- Random Forest
-- Extra Trees
-- XGBoost
-- LightGBM
-- Elastic Net
-- calibrated meta-model output, `p_cal`
-
-The pipeline can optionally use Optuna for a bounded tuning pass, but only after the baseline has passed the current baseline-gating rules.
-
-Important model-flow points:
-
-- base models are fit under purged/embargoed splits
-- out-of-fold predictions feed the meta-model
-- calibration is chronology-safe and uses a separate holdout inside the purged fit window
-- the tuning path is intentionally constrained to prevent runaway search
-
-### 6. Empirical Probability Mapping And Ranking Guardrails
-
-The pipeline transforms calibrated probabilities into an empirical mapping that is monitored for stability.
-
-Guardrails include:
-
-- minimum support rows
-- bucket minimums
-- maximum fallback usage fraction
-- minimum adjacent-fold Spearman
-- deterministic simple-rank fallback when support is too thin
-
-This logic is important because the pipeline does not trust a mapping just because it was fit. It checks whether the mapping behaves consistently across folds and whether the fallback rate is acceptable.
-
-### 7. Threshold Search
-
-Threshold selection is performed on a threshold holdout using a fixed family of 108 tuples:
-
-- 9 values of `p_min`
-- 4 values of `theta_ev`
-- 3 values of `theta_rel`
-
-This is the current threshold-family correction boundary.
-
-For each fold and each concurrency setting, the pipeline:
-
-- simulates the threshold family
-- computes candidate diagnostics
-- runs fold-local White's Reality Check
-- records sufficiency and skip reasons
-- selects the best bundle within the corrected family
-
-This is one of the places where the repo is very deliberately narrower than a generic machine-learning system.
-
-### 8. Portfolio Simulation
-
-The simulator is a research book simulator, not a broker.
-
-Current execution logic includes:
-
-- entry at next open
-- stop and target checked bar-by-bar
-- max concurrent positions capped at 8
-- max 2 positions per ticker
-- EV-in-R ranking
-- replacement exits
-- time exits aligned to label geometry
-- lagged-liquidity capacity clipping/skipping
-- explicit cost and slippage modeling
-
-The repo does not reward full capacity usage. Occupancy is measured, but it is not a target and it is not a promotion criterion.
-
-### 9. Daily Return And Robustness Reporting
-
-The pipeline converts simulation output into policy daily returns and then into stitched outer-test series.
-
-The robustness stack includes:
-
-- calendar-day arithmetic returns
-- idle-capital days as zero-return days
-- adjusted daily Sharpe
-- WRC metadata
-- stitched outer-test DSR
-- stitched drawdown
-- stitched Calmar
-- turnover metrics
-- holding-period metrics
-- capacity diagnostics
-- regime-policy diagnostics
-
-The stitched series is the basis for final robustness reporting. Skipped folds stay in the calendar as zero-return windows.
-
-### 10. Model Comparison And Promotion
-
-The current comparison layer evaluates:
-
-- `baseline_linear`
-- `baseline_equal_weight_rank_blend`
-- `incumbent_ml`
-
-Promotion is not based on a single headline metric. It requires a stronger combined case:
-
-- feature validation must pass
-- model comparison must pass
-- robustness must pass
-- portfolio policy must pass
-
-The current promotion logic also rejects non-positive deflated Sharpe and preserves the distinction between diagnostic occupancy and actual portfolio validity.
-
-### 11. Seed Robustness
-
-The pipeline includes a seed-robustness sweep for the shortlisted strategy. This exists to answer a simple question: does the selected policy survive small RNG changes, or is it a brittle artifact?
-
-## Key Configuration Defaults
-
-These are the most important defaults in `PipelineConfig`:
-
-| Setting | Default | Meaning |
-|---|---:|---|
-| `max_concurrent_options` | `8` | Hard cap on concurrent positions |
-| `max_positions_per_ticker` | `2` | Per-ticker concentration limit |
-| `outer_train_months` | `36` | Initial outer training span |
-| `outer_test_months` | `6` | Outer test span |
-| `inner_folds` | `5` | Purged inner CV folds |
-| `embargo_bars` | `105` | Chronology protection buffer |
-| `threshold_holdout_months` | `3` | Unbiased threshold selection window |
-| `calibration_holdout_months` | `2` | Out-of-sample calibration window |
-| `p_min_grid` | `9 values` | Threshold family parameter grid |
-| `theta_ev_grid` | `4 values` | Threshold family parameter grid |
-| `theta_rel_grid` | `3 values` | Threshold family parameter grid |
-| `threshold_wrc_bootstrap_reps` | `250` | WRC bootstrap reps |
-| `threshold_wrc_block_length` | `5` | Moving-block bootstrap length |
-| `threshold_wrc_alpha` | `0.10` | Fold selection alpha |
-| `empirical_prob_map_buckets` | `10` | Ranking-map bucket count |
-| `empirical_prob_map_max_fallback_usage_fraction` | `0.25` | Maximum acceptable fallback rate |
-| `empirical_prob_map_min_adjacent_fold_spearman` | `0.70` | Stability floor |
-| `final_min_oos_daily_observations` | `126` | Minimum stitched OOS observations |
-| `bars_per_year` | `252 * 6.5` | Hourly-equivalent annualization |
-
-These values are part of the system semantics, not just tuning knobs.
-
-## Outputs And What They Mean
-
-The pipeline writes all artifacts under `--output_dir`. The authoritative log is `00_logs/pipeline.log`. The only resume checkpoint surface is `06_state/resume_state.json`.
-
-| Directory | File | Purpose |
-|---|---|---|
-| `00_logs/` | `pipeline.log` | Primary run log |
-| `00_logs/` | `panel_timestamp_regularity_summary.json` | Panel coverage summary |
-| `00_logs/` | `panel_timestamp_regularity_by_ticker.csv` | Per-ticker coverage diagnostics |
-| `01_data/` | `model_ready_dataset.csv` | Labeled, filtered model input |
-| `02_metrics/` | `fold_metrics.csv` | Per-fold performance and guardrail evidence |
-| `02_metrics/` | `trade_blotter.csv` | Trade-level simulation history |
-| `02_metrics/` | `equity_curves.csv` | Fold-level equity curves |
-| `02_metrics/` | `selected_thresholds.csv` | Selected threshold tuple per fold |
-| `02_metrics/` | `concurrency_comparison.csv` | Aggregates by max concurrency |
-| `02_metrics/` | `threshold_candidate_diagnostics.csv` | Candidate-level threshold diagnostics |
-| `02_metrics/` | `policy_daily_returns.csv` | Stitched calendar-day return series |
-| `02_metrics/` | `overall_metrics.json` | Run-level OOS summary and viability flags |
-| `03_features/` | `feature_registry.csv` | Feature registry |
-| `03_features/` | `feature_registry_coverage_summary.csv` | Feature coverage summary |
-| `03_features/` | `feature_validation_rows.csv` | Fold-level feature validation rows |
-| `03_features/` | `feature_validation_ic_daily_rows.csv` | Daily IC rows |
-| `03_features/` | `feature_validation_report.csv` | Fold-aggregated feature validation report |
-| `03_features/` | `feature_importances_by_fold.csv` | Base-model feature importance by fold |
-| `03_features/` | `feature_stability_summary.csv` | Cross-fold importance summary |
-| `04_strategies/` | `strategy_library.csv` | Strategy summary table |
-| `04_strategies/` | `strategy_scorecards.csv` | Scorecard and promotion support view |
-| `04_strategies/` | `model_comparison_report_rows.csv` | Raw model-comparison rows |
-| `04_strategies/` | `model_comparison_report.csv` | Aggregated model comparison |
-| `04_strategies/` | `position_ranking_audit.csv` | Deterministic ranking / clip / skip audit trail |
-| `04_strategies/` | `best_strategy_summary.json` | Best strategy summary |
-| `04_strategies/` | `seed_robustness_summary.csv` | Seed-sensitivity summary |
-| `05_reports/` | `equity_curve_best_concurrency.png` | Best-concurrency equity chart |
-| `05_reports/` | `final_report.md` | Human-readable final report |
-| `06_state/` | `resume_state.json` | Resume checkpoint |
-| `06_state/` | `config_snapshot.json` | Config and semantic fingerprint |
-| `06_state/` | `verification.json` | Input and run verification state |
-
-## Current Status Versus Finished Phase 1
-
-The roadmap currently says the repo has implemented the major Phase 1 mechanics, but some decision-grade work is still pending.
-
-Already in place:
-
-- fixed max concurrent cap of 8
-- threshold-family correction for the 108 threshold tuples
-- stitched calendar-day outer-test validation
-- WRC, DSR, occupancy, turnover, holding-period, capacity, and regime-policy fields
-- resume/version fields in canonical artifacts
-- feature validation, model comparison, scorecards, and ranking-map guardrails in runtime and artifacts
-
-Still pending at the time of the roadmap snapshot:
-
-- full decision-grade end-to-end validation run
-- Tier 1, Tier 2, and Tier 3 smoke validation completion
-- canonical reproducibility rerun
-- final review of ranking-map guardrail evidence and WRC power on real-run artifacts
-
-That distinction matters. This repo is not pretending to be done just because it can run.
-
-## How To Run It
-
-### Core Research Run
+### 4. Run The Downstream Research Pipeline
 
 ```powershell
 .\.venv\Scripts\python.exe Pipeline.py `
@@ -544,41 +312,7 @@ That distinction matters. This repo is not pretending to be done just because it
   --output_dir pipeline_outputs
 ```
 
-This is the baseline decision-grade run path for the current repo.
-
-### Optional Optuna Run
-
-```powershell
-.\.venv\Scripts\python.exe Pipeline.py `
-  --input_panel_csv panel_ohlcv_clean.csv `
-  --output_dir pipeline_outputs_optuna `
-  --enable_optuna_tuning
-```
-
-Optuna tuning is intentionally gated. The baseline should already be strong before you tune.
-
-### Deterministic Reproducibility Run
-
-```powershell
-.\.venv\Scripts\python.exe Pipeline.py `
-  --input_panel_csv panel_ohlcv_clean.csv `
-  --output_dir pipeline_outputs_repro `
-  --deterministic_mode
-```
-
-This is the canonical reproducibility path once the main run is stable.
-
-### Smoke Ladder
-
-Use a separate overwrite-oriented directory so smoke artifacts do not mix with the canonical run.
-
-```powershell
-.\.venv\Scripts\python.exe Pipeline.py `
-  --input_panel_csv panel_ohlcv_clean.csv `
-  --output_dir pipeline_outputs_smoke
-```
-
-### Resume
+### 5. Resume The Downstream Run
 
 ```powershell
 .\.venv\Scripts\python.exe Pipeline.py `
@@ -587,178 +321,110 @@ Use a separate overwrite-oriented directory so smoke artifacts do not mix with t
   --resume
 ```
 
-Resume requires the same input and the same output directory. The resume fingerprint will reject mismatched semantics.
+Resume requires the same effective input and output directory. The downstream pipeline remains responsible for its own Phase 1 fingerprinting and resume checks.
 
-## Control Plane And Governance
+When the optional `lineage` dependency group is installed and file-backed lineage emission succeeds, downstream runs also write:
 
-The control plane is not decorative. It is part of the repo's safety model.
+- `pipeline_outputs/06_state/lineage_summary.json`
+- file-backed OpenLineage events under `pipeline_outputs/06_state/lineage_events/`
+
+These lineage artifacts carry the same `dataset_build_id` and `export_panel_version_id` references as the export manifest and MLflow tags.
+
+## Validation Commands
+
+Market-data validation:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests/market_data -q
+.\.venv\Scripts\python.exe tools/verify_market_data.py
+.\.venv\Scripts\python.exe -m market_data.cli qa --all
+```
+
+Downstream Phase 1 validation:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests/test_phase1_helpers.py tests/test_phase1_smoke.py -q
+.\.venv\Scripts\python.exe tools/phase1_sanity_check.py --output_dir pipeline_outputs
+```
+
+Repo and control-plane validation:
+
+```powershell
+.\.venv\Scripts\python.exe tools/verify_runtime.py
+.\.venv\Scripts\python.exe tools/verify_tracked_locks.py
+.\.venv\Scripts\python.exe tools/verify_frozen_surfaces.py
+.\.venv\Scripts\python.exe tools/render_cursor_projection.py --check
+```
+
+## Documentation Synchronization Rule
+
+A material change affecting any of the following is incomplete unless code, tests, docs, and verification move together:
+
+- schema
+- PIT logic
+- benchmark semantics
+- source-of-truth boundaries
+- compatibility bridge behavior
+- export contracts
+- orchestration critical path
+- user-facing run, build, export, or verification entrypoints
+
+At minimum, that means updating:
+
+- `README.md`
+- `docs/data_contract.md`
+- `market_data/COMMANDS.md`
+
+## Tooling Direction
+
+### Highest ROI Now
+
+1. Pandera
+2. canonical identity and export-safety cutover
+3. `README.md` plus `docs/data_contract.md`
+4. truthful dataset/export manifests and verification reports
+5. MLflow and OpenLineage tied to dataset/export build IDs
+6. DuckDB and Parquet discipline
+7. narrow DVC
+
+### Medium ROI
+
+1. agent-assisted implementation and review throughput
+
+### De-Prioritized For Now
+
+1. Dagster expansion
+2. Prefect
+3. lakeFS
+4. broad MCP work
+5. broad subagent expansion
+6. broad Great Expectations expansion
+7. broad DVC expansion
+
+## Cleanup And File Vitality
+
+The repo should keep one cleanup authority, not several overlapping cleanup lists.
+
+Direction:
+
+- repo-vital file classification belongs in a dedicated registry and cleanup policy
+- generated or local-only surfaces should be identified explicitly so they can be regenerated or removed safely
+- compatibility-only and optional-secondary surfaces should be reviewable for retirement without becoming hidden authorities
+- cleanup tooling must never auto-delete canonical or normative documentation surfaces
+
+## Control Plane
+
+The control plane remains part of the repo safety model.
 
 Important surfaces:
 
 - `AGENTS.md` is the canonical policy file
 - `tools/control_plane.py` is the local CLI entrypoint
-- `control_plane/policy_loader.py` enforces canonical policy bootstrap
+- `control_plane/policy_loader.py` enforces bootstrap integrity
 - `control_plane/orchestrator.py` routes tasks and roles
-- `control_plane/task_state.py` manages task-scaffold state files
-- `control_plane/phase1_contract.json` defines artifact contracts
-- `contracts/*.lock.json` now hold the tracked bootstrap and projection authority that the control plane trusts by default
-- `.agents/skills/*` are the canonical repo-local skills; `.cursor/*` remains generated compatibility output
-
-Common control-plane actions:
-
-```powershell
-.\.venv\Scripts\python.exe tools/control_plane.py trust-policy
-.\.venv\Scripts\python.exe tools/control_plane.py validate-bootstrap
-.\.venv\Scripts\python.exe tools/control_plane.py phase1-change-check --classification docs_only --justification "Docs update"
-.\.venv\Scripts\python.exe tools/control_plane.py read-pipeline-log --output-dir pipeline_outputs
-```
-
-The repo also uses task workspaces under `.local/control_plane/tasks` with durable state files. That scaffold is not optional when the control plane is in use.
-
-### Control-Plane Roles
-
-The current policy defines these roles:
-
-- `Coordinator` - decomposes tasks, routes work, and owns terminal-state decisions
-- `Builder` - makes approved repo changes
-- `Runner` - executes approved repo actions
-- `Verifier` - validates after edits and writes verifier evidence
-- `Auditor` - performs read-only policy and chronology review
-- `Watcher` - handles operational recovery
-- `DependencyAgent` - proposes or installs dependencies under policy
-
-This matters because the repo is designed to keep policy, execution, and verification separate.
-
-## Dependencies And Environment
-
-### Runtime
-
-- Python `3.11.9`
-- Environments managed by [uv](https://docs.astral.sh/uv/)
-- `uv.lock` is the canonical lockfile; CI installs from lock, not loose resolution
-- Git must be available on `PATH`
-- Codex hooks/config may exist, but native Windows acceptance must not rely on hook execution
-
-### Setup (any platform)
-
-```bash
-uv sync --group dev --group control-plane
-```
-
-This installs all core research dependencies plus dev/test and control-plane packages from the lockfile.
-
-Additional dependency groups are available for the extended platform:
-
-```bash
-uv sync --group dev --group control-plane --group orchestrator --group data --group ml --group lineage
-```
-
-### Setup (WSL / Linux -- preferred for CI parity)
-
-```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-cd /mnt/e/stock_csvs_AI-Perspective/NEW
-uv sync --group dev --group control-plane
-uv run python -m pytest -q
-```
-
-### Setup (Windows PowerShell)
-
-```powershell
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-cd E:\stock_csvs_AI-Perspective\NEW
-uv sync --group dev --group control-plane
-uv run python -m pytest -q
-```
-
-### Dependency Groups
-
-All dependencies are defined in `pyproject.toml` under `[project.dependencies]` and `[dependency-groups]`:
-
-| Group | Contents |
-|-------|----------|
-| (default) | pandas, numpy, matplotlib, scikit-learn, xgboost, lightgbm, tabulate, optuna |
-| `dev` | pytest |
-| `control-plane` | openai, openai-agents, python-dotenv |
-| `orchestrator` | dagster, dagster-webserver |
-| `data` | great-expectations, dvc, dvclive |
-| `ml` | mlflow |
-| `lineage` | openlineage-python |
-
-### Path And Output Policy
-
-- the repo resolves paths relative to `PIPELINE_BASE_PATH` if it is set
-- otherwise, paths resolve relative to the repo root
-- the current pipeline writes into numbered output directories under the configured output path
-- the authoritative log is always `00_logs/pipeline.log`
-- do not redirect stdout into the log file
-
-## Testing And Validation
-
-The repo includes tests for:
-
-- helper functions
-- regression protections
-- smoke behavior
-- control-plane policy and runtime behavior
-- sanity checks on artifact contracts
-
-Common commands:
-
-```powershell
-.\.venv\Scripts\python.exe -m pytest -q
-.\.venv\Scripts\python.exe -m pytest -m helper
-.\.venv\Scripts\python.exe -m pytest -m regression
-.\.venv\Scripts\python.exe -m pytest -m smoke
-.\.venv\Scripts\python.exe tools/phase1_sanity_check.py --output_dir pipeline_outputs
-```
-
-The artifact sanity checker validates:
-
-- required files exist
-- JSON artifacts contain required keys
-- CSV artifacts contain required columns
-- markdown reports contain required sections
-- legacy root-level log/resume surfaces are not reintroduced
-- assessment registry records stay well-formed
-
-## What To Preserve When Editing
-
-If you are changing the pipeline, keep these rules in mind:
-
-- do not reward occupancy
-- do not broaden the correction boundary without updating the Phase 1 docs first
-- do not silently change output schemas
-- do not replace the canonical control plane with an alternate one
-- do not change resume semantics without updating the fingerprinting and validation logic
-- do not conflate diagnostic metrics with promotion criteria
-
-If a change is behaviorally meaningful, it should usually touch code, tests, docs, and state files together.
-
-## What The Repo Should Become Next
-
-The near-term goals, based on the current roadmap, are:
-
-- complete the full decision-grade Phase 1 run
-- complete the smoke ladder
-- complete the canonical reproducibility rerun
-- inspect ranking-map guardrail evidence and WRC power on real artifacts
-- only after Phase 1 is stable, consider the optional Phase 2 auditability refactor
-
-Phase 2 is about making the system easier to diagnose and extend. It is not required to declare Phase 1 complete.
-
-## Quick Mental Model
-
-If you need one compact summary of the repo, use this:
-
-- input is a cleaned OHLCV panel with session metadata
-- the pipeline builds feature and label layers from that panel
-- walk-forward splits protect chronology
-- models are trained, calibrated, and compared under a constrained correction boundary
-- a threshold family is selected with WRC and ranking-map guardrails
-- a simulator turns the policy into daily returns and robustness metrics
-- promotion is allowed only when the evidence stack is complete
-- the control plane exists to prevent silent drift
+- `control_plane/task_state.py` manages durable task artifacts
+- `.agents/skills/*` are canonical repo-local skills
+- `.cursor/*` remains generated compatibility output
 
 ## License
 

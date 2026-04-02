@@ -1,0 +1,6 @@
+calendars:
+  primary_exchange: XNYS
+  timezone: America/New_York
+  sessions:
+    include_early_closes: true
+    include_half_days: true

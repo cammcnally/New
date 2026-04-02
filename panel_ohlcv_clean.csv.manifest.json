@@ -1,0 +1,20 @@
+{
+  "manifest_version": "market_data_export_manifest_v1",
+  "export_panel_version_id": "export-panel-270fc71e2b9f6ec2",
+  "dataset_build_id": "dataset-build-83e7ef7e16865743",
+  "contract_name": "export_panel",
+  "output_path": "E:\\stock_csvs_AI-Perspective\\NEW\\panel_ohlcv_clean.csv",
+  "start_date": "2010-01-01",
+  "end_date": "2026-04-02",
+  "row_count": 5578652,
+  "ticker_count": 12130,
+  "content_hash": "270fc71e2b9f6ec2e2d847afd4173e707271bb5f04a246d60dcb55d72a019588",
+  "generated_at_utc": "2026-04-02T11:09:33.237148+00:00",
+  "git_commit": "db07ae3e967f975dc188e9c71c5b7841d14cbd83",
+  "python_version": "3.11.9",
+  "verification_artifacts": [],
+  "deferred_components": [
+    "instrument_classification_history",
+    "instrument_benchmark_map"
+  ]
+}

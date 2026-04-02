@@ -1,0 +1,150 @@
+benchmarks:
+  broad_market:
+    - symbol: SPY
+      benchmark_type: market
+      semantic_role: default broad-market benchmark for U.S. equity excess returns, beta alpha, and regime context
+      default_usage: default_market_benchmark
+      proxy_for: null
+      canonical_or_proxy: canonical
+    - symbol: QQQ
+      benchmark_type: market
+      semantic_role: optional Nasdaq-heavy alternate benchmark
+      default_usage: optional_alternate_benchmark
+      proxy_for: null
+      canonical_or_proxy: canonical
+    - symbol: IWM
+      benchmark_type: market
+      semantic_role: optional small-cap style benchmark
+      default_usage: optional_alternate_benchmark
+      proxy_for: null
+      canonical_or_proxy: canonical
+    - symbol: DIA
+      benchmark_type: market
+      semantic_role: optional industrial-heavy alternate benchmark
+      default_usage: optional_alternate_benchmark
+      proxy_for: null
+      canonical_or_proxy: canonical
+
+  duration:
+    - symbol: TLT
+      benchmark_type: duration
+      semantic_role: long-duration treasury regime context
+      default_usage: duration_context
+      proxy_for: long_treasury_duration
+      canonical_or_proxy: proxy
+    - symbol: IEF
+      benchmark_type: duration
+      semantic_role: intermediate-duration treasury regime context
+      default_usage: duration_context
+      proxy_for: intermediate_treasury_duration
+      canonical_or_proxy: proxy
+    - symbol: SHY
+      benchmark_type: duration
+      semantic_role: short-duration treasury regime context
+      default_usage: duration_context
+      proxy_for: short_treasury_duration
+      canonical_or_proxy: proxy
+
+  credit:
+    - symbol: HYG
+      benchmark_type: credit
+      semantic_role: high-yield credit spread context
+      default_usage: credit_context
+      proxy_for: high_yield_credit
+      canonical_or_proxy: proxy
+    - symbol: LQD
+      benchmark_type: credit
+      semantic_role: investment-grade credit context
+      default_usage: credit_context
+      proxy_for: investment_grade_credit
+      canonical_or_proxy: proxy
+
+  sectors:
+    - symbol: XLB
+      benchmark_type: sector
+      semantic_role: materials sector-relative benchmark only when valid classification mapping exists
+      default_usage: sector_relative_if_mapped
+      proxy_for: materials_sector
+      canonical_or_proxy: proxy
+    - symbol: XLE
+      benchmark_type: sector
+      semantic_role: energy sector-relative benchmark only when valid classification mapping exists
+      default_usage: sector_relative_if_mapped
+      proxy_for: energy_sector
+      canonical_or_proxy: proxy
+    - symbol: XLF
+      benchmark_type: sector
+      semantic_role: financials sector-relative benchmark only when valid classification mapping exists
+      default_usage: sector_relative_if_mapped
+      proxy_for: financials_sector
+      canonical_or_proxy: proxy
+    - symbol: XLI
+      benchmark_type: sector
+      semantic_role: industrials sector-relative benchmark only when valid classification mapping exists
+      default_usage: sector_relative_if_mapped
+      proxy_for: industrials_sector
+      canonical_or_proxy: proxy
+    - symbol: XLK
+      benchmark_type: sector
+      semantic_role: technology sector-relative benchmark only when valid classification mapping exists
+      default_usage: sector_relative_if_mapped
+      proxy_for: technology_sector
+      canonical_or_proxy: proxy
+    - symbol: XLP
+      benchmark_type: sector
+      semantic_role: consumer staples sector-relative benchmark only when valid classification mapping exists
+      default_usage: sector_relative_if_mapped
+      proxy_for: consumer_staples_sector
+      canonical_or_proxy: proxy
+    - symbol: XLU
+      benchmark_type: sector
+      semantic_role: utilities sector-relative benchmark only when valid classification mapping exists
+      default_usage: sector_relative_if_mapped
+      proxy_for: utilities_sector
+      canonical_or_proxy: proxy
+    - symbol: XLV
+      benchmark_type: sector
+      semantic_role: healthcare sector-relative benchmark only when valid classification mapping exists
+      default_usage: sector_relative_if_mapped
+      proxy_for: healthcare_sector
+      canonical_or_proxy: proxy
+    - symbol: XLY
+      benchmark_type: sector
+      semantic_role: consumer discretionary sector-relative benchmark only when valid classification mapping exists
+      default_usage: sector_relative_if_mapped
+      proxy_for: consumer_discretionary_sector
+      canonical_or_proxy: proxy
+    - symbol: XLRE
+      benchmark_type: sector
+      semantic_role: real estate sector-relative benchmark only when valid classification mapping exists
+      default_usage: sector_relative_if_mapped
+      proxy_for: real_estate_sector
+      canonical_or_proxy: proxy
+    - symbol: XLC
+      benchmark_type: sector
+      semantic_role: communication services sector-relative benchmark only when valid classification mapping exists
+      default_usage: sector_relative_if_mapped
+      proxy_for: communication_services_sector
+      canonical_or_proxy: proxy
+
+  volatility:
+    - symbol: ^VIX
+      benchmark_type: volatility_index
+      semantic_role: canonical spot-volatility index input for market stress context if source coverage is robust
+      default_usage: volatility_context
+      proxy_for: null
+      canonical_or_proxy: canonical
+    - symbol: VIXY
+      benchmark_type: volatility_etp
+      semantic_role: tradable volatility ETP proxy not equivalent to spot ^VIX
+      default_usage: tradable_vol_proxy
+      proxy_for: ^VIX
+      canonical_or_proxy: proxy
+
+  commodity:
+    - symbol: GLD
+      benchmark_type: commodity_etf
+      semantic_role: gold ETF reference instrument not a substitute for spot gold unless explicitly configured
+      default_usage: macro_context
+      proxy_for: spot_gold
+      canonical_or_proxy: proxy

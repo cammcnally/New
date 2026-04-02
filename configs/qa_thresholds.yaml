@@ -1,0 +1,12 @@
+qa_thresholds:
+  source_coverage:
+    min_match_pct: 95.0
+    warn_if_listed_no_prices_gt: 0
+    warn_if_priced_no_listing_gt: 0
+  pit_checks:
+    max_future_leak_rows: 0
+  uniqueness_checks:
+    max_duplicate_pk_rows: 0
+  export_checks:
+    require_manifest: true
+    require_panel_hash: true
