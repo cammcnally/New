@@ -106,10 +106,20 @@ def run_checks(
             raise SystemExit("[bridge] dataset manifest canonical_export_ready=false")
         if dataset_manifest.get("compatibility_fallback_used") is True:
             raise SystemExit("[bridge] dataset manifest compatibility_fallback_used=true")
+        domain_statuses = dataset_manifest.get("domain_statuses")
+        if not isinstance(domain_statuses, dict) or not isinstance(domain_statuses.get("required_core"), dict):
+            raise SystemExit("[bridge] dataset manifest missing required_core domain status")
+        required_core = domain_statuses["required_core"]
+        if required_core.get("blocking_failures"):
+            raise SystemExit("[bridge] dataset manifest reports required_core blocking failures")
         reports = dataset_manifest.get("reports")
         expected_export_manifest = reports.get("export_panel_manifest") if isinstance(reports, dict) else None
         if not expected_export_manifest or _normalized_path_str(expected_export_manifest) != str(manifest_path):
             raise SystemExit("[bridge] dataset manifest export_panel_manifest mismatch")
+        for report_name in ("source_coverage_report", "unresolved_identity_report", "quarantine_report", "final_pass_fail_summary"):
+            report_path = reports.get(report_name) if isinstance(reports, dict) else None
+            if not report_path or not Path(report_path).exists():
+                raise SystemExit(f"[bridge] dataset manifest missing required report: {report_name}")
 
     print(f"[bridge] export manifest: ok ({manifest_path})")
     return 0

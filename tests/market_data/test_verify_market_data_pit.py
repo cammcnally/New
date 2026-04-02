@@ -19,12 +19,20 @@ def _utc(year: int, month: int, day: int, hour: int = 0, minute: int = 0) -> dat
     return datetime(year, month, day, hour, minute, tzinfo=timezone.utc)
 
 
-def test_pit_verifier_fails_when_required_macro_tables_are_missing(tmp_path: Path) -> None:
-    with pytest.raises(SystemExit, match="missing required PIT tables"):
+def test_pit_verifier_treats_missing_macro_tables_as_optional_warning(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert (
         run_checks(
             data_lake=str(tmp_path),
             config_dir=str(_CONFIG_DIR),
         )
+        == 0
+    )
+
+    out = capsys.readouterr().out
+    assert "[pit] optional macro PIT surfaces incomplete" in out
 
 
 def test_pit_verifier_passes_with_contract_valid_macro_tables(
