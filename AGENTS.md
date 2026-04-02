@@ -280,3 +280,36 @@ The control plane is local-first, Phase 1-safe, and fail-closed.
 - The orchestrator must refuse to start if bootstrap integrity checks fail or if the external bootstrap pin is missing or mismatched.
 - The default trace mode is minimal capture. Richer payload capture requires an explicit policy override.
 - `docs/archive/*` and `.local/control_plane/*` are non-authoritative evidence. They must never influence runtime decisions.
+
+## Cursor Cloud specific instructions
+
+### Environment overview
+
+This is a Python 3.11.9 swing-trading research pipeline. All dependency management uses `uv`. No Docker, database, or external services are required for the pipeline or tests.
+
+### Running the pipeline
+
+Set `PIPELINE_BASE_PATH=/workspace` before running `Pipeline.py` — the default base path is a Windows drive letter (`E:/stock_csvs_AI-Perspective/NEW`) and will not resolve on Linux.
+
+```bash
+export PIPELINE_BASE_PATH=/workspace
+uv run python Pipeline.py --input_panel_csv panel_ohlcv_smoke_tier1.csv --output_dir pipeline_outputs_smoke --outer_train_months 6 --outer_test_months 3
+```
+
+The smoke panel (`panel_ohlcv_smoke_tier1.csv`, ~10k rows, 4 tickers) needs shorter training windows (`--outer_train_months 6 --outer_test_months 3`) to produce folds. Default windows (36/6) require the full panel (`panel_ohlcv_clean.csv`, ~351k rows) which takes significantly longer.
+
+### Running tests and linting
+
+```bash
+uv run python -m pytest -q              # full suite
+uv run python -m pytest -m helper       # helper tests only
+uv run python -m pytest -m smoke        # smoke tests only
+```
+
+See `Makefile` for canonical commands: `make sync`, `make test`, `make verify`.
+
+### Known pre-existing test issues on main
+
+- 7 tests fail due to pre-existing repo state issues (loader manifest hash mismatches, missing `.cursor/` generated files, missing `subagent/` directory). These are not environment problems.
+- `tools/verify_runtime.py` reports a false negative because `uv`-managed Python resolves to `~/.local/share/uv/python/...` outside the repo root, while the script checks `sys.executable` is under the repo. The runtime is correct (Python 3.11.9 in `.venv`).
+- `tools/verify_tracked_locks.py` reports a bootstrap lock loader manifest hash mismatch — this is a pre-existing state issue on `main`.
