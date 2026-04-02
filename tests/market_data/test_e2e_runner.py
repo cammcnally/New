@@ -109,6 +109,21 @@ def test_build_status_payload_uses_effective_runner_arguments(test_settings) -> 
     assert payload["resume_command"].endswith("--resume")
 
 
+def test_finalize_status_reuses_complete_pre_export_guard_evidence() -> None:
+    guard_results = e2e_module._empty_guard_results()
+    for guard in ("schema_guard", "docs_sync_guard", "pit_guard", "compat_guard", "bridge_guard"):
+        guard_results[guard]["result"] = "passed"
+
+    assert e2e_module._has_complete_pre_export_guard_evidence(guard_results) is True
+
+
+def test_finalize_status_detects_missing_pre_export_guard_evidence() -> None:
+    guard_results = e2e_module._empty_guard_results()
+    guard_results["schema_guard"]["result"] = "passed"
+
+    assert e2e_module._has_complete_pre_export_guard_evidence(guard_results) is False
+
+
 def test_run_e2e_persists_current_stage_before_inprocess_failure(
     monkeypatch: pytest.MonkeyPatch,
     test_settings,

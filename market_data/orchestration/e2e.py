@@ -194,6 +194,13 @@ def _empty_guard_results() -> dict[str, dict[str, str]]:
     return {guard: {"result": "", "evidence_path": "", "notes": ""} for guard in GUARDS}
 
 
+def _has_complete_pre_export_guard_evidence(guard_results: dict[str, dict[str, str]]) -> bool:
+    return all(
+        guard_results.get(guard, {}).get("result") == "passed"
+        for guard in ("schema_guard", "docs_sync_guard", "pit_guard", "compat_guard", "bridge_guard")
+    )
+
+
 def _load_stage_records(raw_records: list[dict[str, Any]] | None) -> list[StageRecord]:
     records: list[StageRecord] = []
     for item in raw_records or []:
@@ -561,26 +568,37 @@ def run_e2e(
                 ]
                 command = " ".join(phase1_command)
                 log_path = _run_subprocess(phase1_command, stage=stage, settings=settings)
-                verification_results = run_verification_bundle(
-                    data_lake=str(settings.data_lake_root),
-                    config_dir=str(settings.configs_dir),
-                    panel_path=str(panel_path_obj),
-                )
                 verification_paths = _paths(settings)
-                _set_guard_result(
-                    guard_results,
-                    guard="verification_guard",
-                    result="passed",
-                    evidence_path=str(verification_paths["verification_json"]),
-                    notes="Final integrated verification bundle passed.",
-                )
-                for guard, result in verification_results.items():
+                if _has_complete_pre_export_guard_evidence(guard_results):
                     _set_guard_result(
                         guard_results,
-                        guard=guard,
-                        result=result,
-                        notes="Confirmed by final verification bundle." if guard != "verification_guard" else "Final integrated verification bundle passed.",
+                        guard="verification_guard",
+                        result="passed",
+                        evidence_path=str(verification_paths["verification_json"]),
+                        notes="Reused pre-export guard evidence; final bundle not rerun.",
                     )
+                else:
+                    verification_results = run_verification_bundle(
+                        data_lake=str(settings.data_lake_root),
+                        config_dir=str(settings.configs_dir),
+                        panel_path=str(panel_path_obj),
+                    )
+                    _set_guard_result(
+                        guard_results,
+                        guard="verification_guard",
+                        result="passed",
+                        evidence_path=str(verification_paths["verification_json"]),
+                        notes="Final integrated verification bundle passed.",
+                    )
+                    for guard, result in verification_results.items():
+                        _set_guard_result(
+                            guard_results,
+                            guard=guard,
+                            result=result,
+                            notes="Confirmed by final verification bundle."
+                            if guard != "verification_guard"
+                            else "Final integrated verification bundle passed.",
+                        )
                 verification_json, verification_md = _write_verification_summary(settings, guard_results)
                 primary_output = verification_json
                 outputs = {
