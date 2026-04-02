@@ -9,6 +9,7 @@ import pytest
 from market_data.common.io_parquet import write_parquet
 from market_data.common.paths import silver_path
 from market_data.common.pandera_contracts import ContractValidationError
+from tests.market_data.benchmark_contract_fixtures import minimal_valid_benchmark_definitions_pl
 from tools import verify_market_data_contracts as contracts_module
 
 pytestmark = pytest.mark.ingestion
@@ -20,34 +21,7 @@ def _utc(year: int, month: int, day: int, hour: int = 0, minute: int = 0) -> dat
     return datetime(year, month, day, hour, minute, tzinfo=timezone.utc)
 
 
-def test_contract_verifier_fails_when_required_canonical_tables_are_missing(tmp_path: Path) -> None:
-    with pytest.raises(SystemExit, match="missing required canonical tables"):
-        contracts_module.run_checks(
-            data_lake=str(tmp_path),
-            config_dir=str(_CONFIG_DIR),
-        )
-
-
-def test_contract_verifier_allows_missing_deferred_tables(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    monkeypatch.setattr(
-        contracts_module,
-        "CONTRACT_PATHS",
-        {
-            "instrument_classification_history": "instrument_classification_history",
-            "instrument_benchmark_map": "instrument_benchmark_map",
-        },
-    )
-
-    assert contracts_module.run_checks(data_lake=str(tmp_path), config_dir=str(_CONFIG_DIR)) == 0
-
-
-def test_contract_verifier_passes_with_minimal_required_tables(
-    test_settings,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
+def _write_minimal_required_non_macro_tables(test_settings) -> None:
     instrument_master = pl.DataFrame(
         {
             "instrument_id": [1],
@@ -114,25 +88,28 @@ def test_contract_verifier_passes_with_minimal_required_tables(
         silver_path("prices_1d_unadjusted", test_settings) / "prices.parquet",
     )
 
-    benchmark_definitions = pl.DataFrame(
-        {
-            "group": ["volatility", "volatility", "broad_market"],
-            "symbol": ["^VIX", "VIXY", "SPY"],
-            "benchmark_type": ["volatility_index", "volatility_etp", "market"],
-            "semantic_role": [
-                "canonical spot-volatility index reference",
-                "tradable volatility ETP proxy",
-                "default broad market benchmark",
-            ],
-            "default_usage": ["volatility_context", "tradable_vol_proxy", "default_market_benchmark"],
-            "proxy_for": [None, "^VIX", None],
-            "canonical_or_proxy": ["canonical", "proxy", "canonical"],
-        }
-    )
+    benchmark_definitions = minimal_valid_benchmark_definitions_pl()
     write_parquet(
         benchmark_definitions,
         silver_path("benchmark_definitions", test_settings) / "benchmark_definitions.parquet",
     )
+
+    bench_px = pl.DataFrame(
+        {
+            "sid": ["1"],
+            "trade_date": [date(2024, 1, 2)],
+            "open": [10.0],
+            "high": [11.0],
+            "low": [9.0],
+            "close": [10.5],
+            "volume": [1000.0],
+            "source_vendor": ["yfinance"],
+            "loaded_at": [_utc(2024, 1, 3)],
+        }
+    ).with_columns(pl.col("loaded_at").cast(pl.Datetime("us", "UTC")))
+    bdir = silver_path("benchmark_prices_daily", test_settings)
+    bdir.mkdir(parents=True, exist_ok=True)
+    write_parquet(bench_px, bdir / "benchmark_prices.parquet")
 
     trading_calendar = pl.DataFrame(
         {
@@ -153,6 +130,37 @@ def test_contract_verifier_passes_with_minimal_required_tables(
         trading_calendar,
         silver_path("trading_calendar", test_settings) / "trading_calendar.parquet",
     )
+
+
+def test_contract_verifier_fails_when_required_canonical_tables_are_missing(tmp_path: Path) -> None:
+    with pytest.raises(SystemExit, match="missing required canonical tables"):
+        contracts_module.run_checks(
+            data_lake=str(tmp_path),
+            config_dir=str(_CONFIG_DIR),
+        )
+
+
+def test_contract_verifier_allows_missing_deferred_tables(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(
+        contracts_module,
+        "CONTRACT_PATHS",
+        {
+            "instrument_classification_history": "instrument_classification_history",
+            "instrument_benchmark_map": "instrument_benchmark_map",
+        },
+    )
+
+    assert contracts_module.run_checks(data_lake=str(tmp_path), config_dir=str(_CONFIG_DIR)) == 0
+
+
+def test_contract_verifier_passes_with_minimal_required_tables(
+    test_settings,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _write_minimal_required_non_macro_tables(test_settings)
 
     macro_vintages = pl.DataFrame(
         {
@@ -206,7 +214,27 @@ def test_contract_verifier_passes_with_minimal_required_tables(
     )
 
     out = capsys.readouterr().out
-    assert "[contracts] checked=7" in out
+    assert "[contracts] checked=8" in out
+
+
+def test_contract_verifier_skips_missing_optional_macro_tables(
+    test_settings,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _write_minimal_required_non_macro_tables(test_settings)
+
+    assert (
+        contracts_module.run_checks(
+            data_lake=str(test_settings.data_lake_root),
+            config_dir=str(test_settings.configs_dir),
+        )
+        == 0
+    )
+
+    out = capsys.readouterr().out
+    assert "[contracts] checked=6" in out
+    assert "[contracts] skip macro_observations_vintage: missing" in out
+    assert "[contracts] skip macro_asof_daily: missing" in out
 
 
 def _minimal_price_row(sid: str = "1", trade_d: date | None = None) -> pl.DataFrame:
@@ -238,6 +266,18 @@ def test_validate_silver_prices_partitioned_incremental(
     write_parquet(_minimal_price_row(trade_d=date(2024, 1, 4)), prices_dir / "y2024.parquet")
     n = contracts_module.validate_silver_contract_dataset("prices_1d_unadjusted", prices_dir)
     assert n == 2
+
+
+def test_validate_benchmark_definitions_without_benchmark_id_backfills(
+    test_settings,
+) -> None:
+    """Legacy silver without benchmark_id still validates (derived from symbol)."""
+    legacy = minimal_valid_benchmark_definitions_pl().drop("benchmark_id")
+    out = silver_path("benchmark_definitions", test_settings) / "legacy.parquet"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    write_parquet(legacy, out)
+    n = contracts_module.validate_silver_contract_dataset("benchmark_definitions", out.parent)
+    assert n == len(legacy)
 
 
 def test_validate_silver_prices_incremental_catches_cross_file_pk_dupes(

@@ -5,8 +5,15 @@ from dataclasses import dataclass
 from market_data.common.settings import IngestionSettings, load_yaml_config
 
 
+def derive_benchmark_id(symbol: str) -> str:
+    """Stable benchmark_definitions.benchmark_id (not an instrument_id)."""
+    normalized = symbol.lstrip("^").replace(".", "_")
+    return f"bm_{normalized}"
+
+
 @dataclass(frozen=True)
 class BenchmarkDef:
+    benchmark_id: str
     group: str
     symbol: str
     benchmark_type: str
@@ -21,10 +28,13 @@ def load_benchmark_defs(settings: IngestionSettings) -> list[BenchmarkDef]:
     out: list[BenchmarkDef] = []
     for group, entries in cfg.get("benchmarks", {}).items():
         for entry in entries or []:
+            symbol = str(entry["symbol"])
+            benchmark_id = str(entry["benchmark_id"]) if entry.get("benchmark_id") else derive_benchmark_id(symbol)
             out.append(
                 BenchmarkDef(
+                    benchmark_id=benchmark_id,
                     group=group,
-                    symbol=str(entry["symbol"]),
+                    symbol=symbol,
                     benchmark_type=str(entry["benchmark_type"]),
                     semantic_role=str(entry["semantic_role"]),
                     default_usage=str(entry["default_usage"]),

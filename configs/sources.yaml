@@ -53,10 +53,12 @@ sources:
       - entity_verification_support
     raw:
       datasets:
+        - company_tickers
         - submissions
         - companyfacts
     bronze:
       datasets:
+        - sec_company_tickers
         - sec_submissions
         - sec_companyfacts
     notes: "Authoritative legal-name and public-filing/fundamental support when available."

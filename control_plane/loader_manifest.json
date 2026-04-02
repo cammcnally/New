@@ -1,7 +1,7 @@
 {
   "generated_by": "tools/refresh_loader_manifest.py",
   "files": {
-    "AGENTS.md": "1466abd07a912c5b22e2e1372cb70b440f44dd198ed53dfcdd90a0e022d44348",
+    "AGENTS.md": "41118079fedadee2d8cbeda7f1bac7171a066c4cf17ed178b9cb32eecb2fe037",
     "control_plane/models.py": "25111f87cbfd8737dbe0c2e1cd2b0fc07e73d2d45236412af68dc71d81e68412",
     "control_plane/task_state.py": "1ea4bac9df129ee5f6fab8d0b6675d572db05298b9b240b79b4fa50499b6340b",
     "control_plane/codex_mcp.py": "2f57a253399c8b962638501f40b5537a4cde4027969322f3784df6505a81b703",

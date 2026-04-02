@@ -237,8 +237,9 @@ FUNDAMENTALS_PUBLIC_FACTS = {
 
 # ── Classification and benchmark alignment ───────────────────────────────────
 
-BENCHMARK_DEFINITIONS_PK = ["symbol"]
+BENCHMARK_DEFINITIONS_PK = ["benchmark_id"]
 BENCHMARK_DEFINITIONS = {
+    "benchmark_id": pl.Utf8,
     "group": pl.Utf8,
     "symbol": pl.Utf8,
     "benchmark_type": pl.Utf8,
@@ -272,20 +273,17 @@ INSTRUMENT_CLASSIFICATION_HISTORY = {
 
 INSTRUMENT_BENCHMARK_MAP_PK = [
     "instrument_id",
-    "mapping_type",
-    "benchmark_instrument_id",
     "effective_from_date",
 ]
 INSTRUMENT_BENCHMARK_MAP = {
     "instrument_id": pl.Int64,
-    "mapping_type": pl.Utf8,
-    "benchmark_instrument_id": pl.Int64,
-    "classification_system": pl.Utf8,
-    "mapping_confidence": pl.Float64,
+    "market_benchmark_id": pl.Utf8,
+    "sector_benchmark_id": pl.Utf8,
     "effective_from_date": pl.Date,
     "effective_to_date": pl.Date,
     "mapping_rule_version": pl.Utf8,
-    "created_at_utc": pl.Datetime("us", "UTC"),
+    "mapping_source": pl.Utf8,
+    "asof_timestamp": pl.Datetime("us", "UTC"),
 }
 
 
@@ -308,6 +306,9 @@ UNIVERSE_MEMBERSHIP_HISTORY = {
 
 
 # ── Benchmark reference prices and calendar ──────────────────────────────────
+#
+# Legacy instrument-keyed benchmark price dict (includes adj_close). Deprecated for
+# new downstream work; canonical live silver is BENCHMARK_PRICES_DAILY_SILVER.
 
 BENCHMARK_PRICES_DAILY_PK = ["instrument_id", "source", "trade_date"]
 BENCHMARK_PRICES_DAILY = {

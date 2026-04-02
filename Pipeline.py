@@ -92,6 +92,7 @@ class PipelineConfig:
     # Input / output
     input_panel_csv: str = "panel_ohlcv_clean.csv"
     output_dir: str = "pipeline_outputs"
+    strategy_report_template: str = "strategy-report.qmd"
     resume: bool = False
     # Capital / execution
     starting_capital: float = 50_000.0
@@ -1897,6 +1898,8 @@ def load_input_build_metadata(path: Path) -> Dict[str, Any]:
         "input_panel_content_hash": None,
         "dataset_build_id": None,
         "export_panel_version_id": None,
+        "benchmark_surface_path": None,
+        "benchmark_surface_present": False,
     }
     if not manifest_path.exists():
         return metadata
@@ -1913,7 +1916,89 @@ def load_input_build_metadata(path: Path) -> Dict[str, Any]:
             "export_panel_version_id": payload.get("export_panel_version_id"),
         }
     )
+    side_artifacts = payload.get("side_artifacts")
+    if isinstance(side_artifacts, dict):
+        benchmark_surface_path = side_artifacts.get("benchmark_surface_daily")
+        metadata["benchmark_surface_path"] = benchmark_surface_path
+        metadata["benchmark_surface_present"] = bool(
+            benchmark_surface_path and Path(str(benchmark_surface_path)).exists()
+        )
     return metadata
+
+
+def load_benchmark_surface_from_metadata(metadata: Mapping[str, Any]) -> Optional[pd.DataFrame]:
+    path_raw = metadata.get("benchmark_surface_path")
+    if not path_raw:
+        return None
+    path = Path(str(path_raw))
+    if not path.exists():
+        return None
+    try:
+        df = pd.read_parquet(path)
+    except Exception:
+        return None
+    if "date" not in df.columns:
+        return None
+    out = df.copy()
+    out["date"] = pd.to_datetime(out["date"]).dt.date
+    return out
+
+
+def compute_benchmark_diagnostics(
+    daily_frame: pd.DataFrame,
+    benchmark_surface: Optional[pd.DataFrame],
+) -> Dict[str, float]:
+    diagnostics: Dict[str, float] = {
+        "benchmark_surface_present": 0.0,
+        "benchmark_obs": 0.0,
+        "active_return_mean_daily": np.nan,
+        "tracking_error_vs_spy": np.nan,
+        "information_ratio_vs_spy": np.nan,
+        "beta_vs_spy": np.nan,
+        "correlation_vs_spy": np.nan,
+        "excess_return_mean_daily_vs_dff": np.nan,
+    }
+    if benchmark_surface is None or len(daily_frame) == 0:
+        return diagnostics
+    required = {"date", "spy_ret_1d"}
+    if not required.issubset(benchmark_surface.columns):
+        return diagnostics
+    strategy = daily_frame.copy()
+    strategy["date"] = pd.to_datetime(strategy["session_date_ny"]).dt.date
+    merged = strategy.merge(benchmark_surface, on="date", how="inner")
+    if len(merged) == 0:
+        return diagnostics
+    strategy_ret = pd.to_numeric(merged["daily_return"], errors="coerce")
+    spy_ret = pd.to_numeric(merged["spy_ret_1d"], errors="coerce")
+    active = strategy_ret - spy_ret
+    active_std = float(active.std(ddof=1)) if len(active.dropna()) > 1 else np.nan
+    spy_var = float(spy_ret.var(ddof=1)) if len(spy_ret.dropna()) > 1 else np.nan
+    diagnostics["benchmark_surface_present"] = 1.0
+    diagnostics["benchmark_obs"] = float(len(merged))
+    diagnostics["active_return_mean_daily"] = float(active.mean()) if len(active.dropna()) else np.nan
+    diagnostics["tracking_error_vs_spy"] = (
+        float(active_std * np.sqrt(252.0)) if np.isfinite(active_std) and active_std > 0 else np.nan
+    )
+    diagnostics["information_ratio_vs_spy"] = (
+        float(active.mean() / active_std * np.sqrt(252.0))
+        if np.isfinite(active_std) and active_std > 0
+        else np.nan
+    )
+    diagnostics["beta_vs_spy"] = (
+        float(np.cov(strategy_ret, spy_ret, ddof=1)[0, 1] / spy_var)
+        if np.isfinite(spy_var) and spy_var > 0
+        else np.nan
+    )
+    diagnostics["correlation_vs_spy"] = (
+        float(strategy_ret.corr(spy_ret)) if len(merged) > 1 else np.nan
+    )
+    if "dff_daily_rate" in merged.columns:
+        dff = pd.to_numeric(merged["dff_daily_rate"], errors="coerce")
+        excess = strategy_ret - dff
+        diagnostics["excess_return_mean_daily_vs_dff"] = (
+            float(excess.mean()) if len(excess.dropna()) else np.nan
+        )
+    return diagnostics
 
 
 def require_input_build_metadata(path: Path, metadata: Mapping[str, Any]) -> None:
@@ -1981,6 +2066,7 @@ def maybe_log_mlflow_summary(
         "selected_model_artifact_path": str(paths.strategies_dir / "best_strategy_summary.json"),
         "audit_plot_path": str(paths.reports_dir / "equity_curve_best_concurrency.png"),
         "report_path": str(paths.reports_dir / "final_report.md"),
+        "strategy_report_template_path": str(config.strategy_report_template),
     }
 
     panel_digest = config_snapshot_payload.get("input_panel_content_hash") or config_snapshot_payload.get(
@@ -2010,6 +2096,8 @@ def maybe_log_mlflow_summary(
 def run_pipeline_with_optional_lineage(config: PipelineConfig) -> Dict[str, object]:
     output_dir = _resolve_project_path(config.output_dir, force_project_drive=True)
     input_path = _resolve_project_path(config.input_panel_csv)
+    strategy_report_template = _resolve_project_path(config.strategy_report_template)
+    config.strategy_report_template = str(strategy_report_template)
     paths = build_output_paths(output_dir)
     input_build_metadata = load_input_build_metadata(input_path)
 
@@ -2104,6 +2192,7 @@ def run_pipeline_with_optional_lineage(config: PipelineConfig) -> Dict[str, obje
                     "trial_scope_formal": TRIAL_SCOPE_FORMAL,
                     "input_panel_csv": str(input_path),
                     "output_dir": str(output_dir),
+                    "strategy_report_template": str(strategy_report_template),
                     "dataset_build_id": input_build_metadata.get("dataset_build_id"),
                     "export_panel_version_id": input_build_metadata.get("export_panel_version_id"),
                 }
@@ -2136,6 +2225,7 @@ def run_pipeline_with_optional_lineage(config: PipelineConfig) -> Dict[str, obje
             (paths.metrics_dir / "overall_metrics.json", None),
             (paths.strategies_dir / "best_strategy_summary.json", None),
             (paths.reports_dir / "final_report.md", None),
+            (strategy_report_template, None),
         ]
         output_datasets = [
             {
@@ -3952,7 +4042,10 @@ def make_session_codes(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def compute_metrics(
-    trades_df: pd.DataFrame, equity_df: pd.DataFrame, config: PipelineConfig
+    trades_df: pd.DataFrame,
+    equity_df: pd.DataFrame,
+    config: PipelineConfig,
+    benchmark_surface: Optional[pd.DataFrame] = None,
 ) -> Dict[str, float]:
     """Portfolio metrics. bars_per_year in config must match actual panel bar frequency (e.g. 252*6.5 for hourly US equity bars)."""
     if len(equity_df) == 0:
@@ -3987,6 +4080,14 @@ def compute_metrics(
             "avg_active_exposure": 0.0,
             "avg_participation_rate": 0.0,
             "p95_participation_rate": 0.0,
+            "benchmark_surface_present": 0.0,
+            "benchmark_obs": 0.0,
+            "active_return_mean_daily": np.nan,
+            "tracking_error_vs_spy": np.nan,
+            "information_ratio_vs_spy": np.nan,
+            "beta_vs_spy": np.nan,
+            "correlation_vs_spy": np.nan,
+            "excess_return_mean_daily_vs_dff": np.nan,
         }
     eq = equity_df["equity"].astype(float)
     running_max = eq.cummax()
@@ -4079,6 +4180,7 @@ def compute_metrics(
         avg_participation_rate = 0.0
         p95_participation_rate = 0.0
         gross_edge_to_round_trip_cost = 0.0
+    benchmark_diag = compute_benchmark_diagnostics(daily_frame, benchmark_surface)
     return {
         "n_trades": int(len(trades_df)),
         "total_return": total_return,
@@ -4112,6 +4214,7 @@ def compute_metrics(
         "avg_participation_rate": float(avg_participation_rate),
         "p95_participation_rate": float(p95_participation_rate),
         "gross_edge_to_round_trip_cost": float(gross_edge_to_round_trip_cost),
+        **benchmark_diag,
     }
 
 
@@ -5268,6 +5371,7 @@ def write_markdown_report(
     lines.append("## Output Directory")
     lines.append("")
     lines.append(f"All CSV / JSON / chart outputs were written to `{output_root}`.")
+    lines.append(f"Canonical Quarto template path: `{config.strategy_report_template}`.")
     lines.append("")
     atomic_write_text(report_path, "\n".join(lines), encoding="utf-8")
     return report_path
@@ -5682,6 +5786,8 @@ def run_pipeline(config: PipelineConfig) -> Dict[str, object]:
     config.output_dir = str(output_dir)
     input_path = _resolve_project_path(config.input_panel_csv)
     config.input_panel_csv = str(input_path)
+    strategy_report_template = _resolve_project_path(config.strategy_report_template)
+    config.strategy_report_template = str(strategy_report_template)
     if config.deterministic_mode:
         config.n_jobs_tree_models = 1
         config.n_jobs_xgb = 1
@@ -5714,6 +5820,7 @@ def run_pipeline(config: PipelineConfig) -> Dict[str, object]:
     input_data_hash = build_input_data_hash(input_path)
     input_build_metadata = load_input_build_metadata(input_path)
     require_input_build_metadata(input_path, input_build_metadata)
+    benchmark_surface = load_benchmark_surface_from_metadata(input_build_metadata)
     config_hash = build_config_hash(config)
     config_snapshot_payload: Dict[str, Any] = {
         **asdict(config),
@@ -5759,6 +5866,7 @@ def run_pipeline(config: PipelineConfig) -> Dict[str, object]:
         "cost_model_valid": bool(cost_model_ok),
         "missing_cost_model_fields": list(missing_cost_fields),
         "effective_cost_model": cost_model_snapshot,
+        "strategy_report_template_path": str(strategy_report_template),
         "schema_version": SCHEMA_VERSION,
         "robustness_method_version": ROBUSTNESS_METHOD_VERSION,
         "search_family_definition_version": SEARCH_FAMILY_DEFINITION_VERSION,
@@ -6645,7 +6753,12 @@ def run_pipeline(config: PipelineConfig) -> Dict[str, object]:
         if len(fold_metrics_df)
         else pd.DataFrame()
     )
-    overall_metrics = compute_metrics(trades_best, equity_best, config)
+    overall_metrics = compute_metrics(
+        trades_best,
+        equity_best,
+        config,
+        benchmark_surface=benchmark_surface,
+    )
     overall_metrics["best_max_concurrent"] = best_concurrent
     overall_metrics["max_concurrent_is_cap_only"] = True
     overall_metrics["n_folds"] = int(len(fold_metrics_best))
@@ -6692,6 +6805,7 @@ def run_pipeline(config: PipelineConfig) -> Dict[str, object]:
     overall_metrics["dataset_build_id"] = config_snapshot_payload.get("dataset_build_id")
     overall_metrics["export_panel_version_id"] = config_snapshot_payload.get("export_panel_version_id")
     overall_metrics["feature_set_version"] = config_snapshot_payload.get("feature_set_version")
+    overall_metrics["strategy_report_template_path"] = str(strategy_report_template)
     overall_metrics["implementation_status"] = (
         config.implementation_status if config.implementation_status in IMPLEMENTATION_STATUS_VALUES else "present"
     )
@@ -7289,6 +7403,11 @@ def run_pipeline(config: PipelineConfig) -> Dict[str, object]:
     atomic_write_json(paths.state_dir / "verification.json", verification)
     atomic_write_json(paths.state_dir / "config_snapshot.json", config_snapshot_payload)
     atomic_write_json(paths.metrics_dir / "overall_metrics.json", overall_metrics)
+    atomic_write_text(
+        paths.reports_dir / "strategy_report_template_path.txt",
+        str(strategy_report_template),
+        encoding="utf-8",
+    )
     best_strategy_summary = (
         strategy_library.iloc[0].to_dict()
         if len(strategy_library)
@@ -7354,6 +7473,7 @@ def run_pipeline(config: PipelineConfig) -> Dict[str, object]:
         "export_panel_version_id": config_snapshot_payload.get("export_panel_version_id"),
         "feature_set_version": config_snapshot_payload.get("feature_set_version"),
         "report_markdown": str(report_md),
+        "strategy_report_template_path": str(strategy_report_template),
         "output_dir": str(output_dir),
     }
     logging.info("Pipeline complete. Summary: %s", summary)
@@ -7404,6 +7524,11 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Beginning-to-end swing-trading research pipeline")
     parser.add_argument("--input_panel_csv", required=True, help="Path to the cleaned panel CSV")
     parser.add_argument("--output_dir", required=True, help="Directory for all outputs")
+    parser.add_argument(
+        "--strategy_report_template",
+        default="strategy-report.qmd",
+        help="Path to the canonical Quarto strategy report template",
+    )
     parser.add_argument("--include_physics_block", action="store_true", help="Include the physics/regime feature block")
     parser.add_argument("--no_physics_block", action="store_false", dest="include_physics_block", help="Exclude the physics/regime feature block")
     parser.set_defaults(include_physics_block=True)
@@ -7441,6 +7566,7 @@ def main() -> None:
     config = PipelineConfig(
         input_panel_csv=args.input_panel_csv,
         output_dir=args.output_dir,
+        strategy_report_template=str(getattr(args, "strategy_report_template", "strategy-report.qmd")),
         resume=bool(args.resume),
         include_physics_block=bool(args.include_physics_block),
         starting_capital=float(args.starting_capital),

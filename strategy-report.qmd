@@ -1,0 +1,810 @@
+---
+title: "Strategy Discovery Report"
+subtitle: "Institutional Research Template"
+author:
+  - name: "Research Team"
+date: today
+date-format: "D MMMM YYYY"
+jupyter: python3
+
+# Optional bibliography support:
+# bibliography: references.bib
+# csl: apa.csl
+
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    number-sections: true
+    code-fold: true
+    code-tools: true
+    theme: cosmo
+    page-layout: full
+    embed-resources: true
+  pdf:
+    toc: true
+    number-sections: true
+
+execute:
+  echo: false
+  warning: false
+  message: false
+  freeze: auto
+
+crossref:
+  fig-title: "Figure"
+  tbl-title: "Table"
+  lst-title: "Listing"
+
+params:
+  alpha_diagnostics_dir: null
+---
+
+```{python}
+#| label: lst-imports-and-demo-data
+#| code-fold: false
+#| code-summary: "Show setup and demo-data generator"
+
+import math
+import json
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+
+np.random.seed(42)
+
+# -----------------------------------------------------------------------------
+# LOAD REAL ARTIFACTS HERE
+# Replace this entire block with your actual run-artifact loading logic.
+# Expected examples:
+# - summary_metrics.json
+# - equity_curve_daily.parquet
+# - validation_folds.parquet
+# - trades.parquet
+# - predictions.parquet
+# - model_metadata.json
+# -----------------------------------------------------------------------------
+
+dates = pd.bdate_range("2023-01-02", "2025-12-31")
+n = len(dates)
+
+strategy_ret = np.random.normal(0.00045, 0.010, n)
+benchmark_ret = np.random.normal(0.00028, 0.0085, n)
+rf_daily = np.full(n, 0.00012)
+
+equity = pd.DataFrame({
+    "date": dates,
+    "strategy_ret": strategy_ret,
+    "benchmark_ret": benchmark_ret,
+    "rf_daily": rf_daily
+})
+
+equity["strategy_curve"] = (1 + equity["strategy_ret"]).cumprod()
+equity["benchmark_curve"] = (1 + equity["benchmark_ret"]).cumprod()
+equity["active_ret"] = equity["strategy_ret"] - equity["benchmark_ret"]
+equity["active_curve"] = (1 + equity["active_ret"]).cumprod()
+
+equity["running_peak"] = equity["strategy_curve"].cummax()
+equity["drawdown"] = equity["strategy_curve"] / equity["running_peak"] - 1.0
+
+equity["rolling_63d_sharpe"] = (
+    equity["strategy_ret"].rolling(63).mean()
+    / equity["strategy_ret"].rolling(63).std()
+) * np.sqrt(252)
+
+equity["rolling_63d_beta"] = (
+    equity["strategy_ret"].rolling(63).cov(equity["benchmark_ret"])
+    / equity["benchmark_ret"].rolling(63).var()
+)
+
+monthly = (
+    equity.set_index("date")["strategy_ret"]
+    .resample("M")
+    .apply(lambda x: (1 + x).prod() - 1)
+    .to_frame("monthly_return")
+)
+monthly["year"] = monthly.index.year
+monthly["month"] = monthly.index.strftime("%b")
+heatmap = monthly.pivot(index="year", columns="month", values="monthly_return")
+month_order = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
+heatmap = heatmap.reindex(columns=month_order)
+
+folds = pd.DataFrame({
+    "fold": [f"Fold {i}" for i in range(1, 11)],
+    "oos_return": np.random.normal(0.11, 0.08, 10),
+    "oos_sharpe": np.random.normal(1.2, 0.45, 10),
+    "oos_sortino": np.random.normal(1.8, 0.55, 10),
+    "turnover": np.random.normal(6.5, 1.2, 10),
+})
+
+pred = pd.DataFrame({
+    "score": np.random.normal(0, 1, 2500),
+    "realized_ret_21d": np.random.normal(0.015, 0.09, 2500),
+})
+pred["bucket"] = pd.qcut(pred["score"], 10, labels=[f"D{i}" for i in range(1, 11)])
+bucket_perf = pred.groupby("bucket", observed=False)["realized_ret_21d"].mean().reset_index()
+
+feature_importance = pd.DataFrame({
+    "feature": [
+        "ret_63_excess_spy",
+        "rs_sector_slope_63",
+        "natr_14",
+        "vol_zscore_20",
+        "trend_tstat_63",
+        "beta_spy_63",
+        "drawdown_63",
+        "adv20"
+    ],
+    "importance": [0.19, 0.16, 0.14, 0.12, 0.11, 0.10, 0.09, 0.09]
+}).sort_values("importance", ascending=True)
+
+trade_n = 420
+trades = pd.DataFrame({
+    "trade_id": np.arange(1, trade_n + 1),
+    "symbol": np.random.choice(["AAPL","MSFT","NVDA","AMZN","META","XOM","JPM","LLY"], trade_n),
+    "sector": np.random.choice(
+        ["Technology","Energy","Financials","Health Care","Consumer Discretionary"], trade_n
+    ),
+    "holding_days": np.random.randint(2, 30, trade_n),
+    "trade_return": np.random.normal(0.012, 0.065, trade_n),
+    "mae": -np.abs(np.random.normal(0.025, 0.018, trade_n)),
+    "mfe": np.abs(np.random.normal(0.038, 0.025, trade_n)),
+    "entry_score": np.random.normal(0, 1, trade_n),
+})
+
+regimes = pd.DataFrame({
+    "regime": ["Low Vol", "High Vol", "Bull Trend", "Bear Trend", "Rates Up", "Rates Down"],
+    "mean_return": [0.022, -0.006, 0.031, -0.011, 0.008, 0.018],
+    "sharpe": [1.9, -0.2, 2.1, -0.4, 0.7, 1.4],
+    "hit_rate": [0.58, 0.46, 0.61, 0.42, 0.51, 0.56],
+})
+
+strategy_total_return = equity["strategy_curve"].iloc[-1] - 1
+benchmark_total_return = equity["benchmark_curve"].iloc[-1] - 1
+years = (equity["date"].iloc[-1] - equity["date"].iloc[0]).days / 365.25
+cagr = equity["strategy_curve"].iloc[-1] ** (1 / years) - 1
+ann_vol = equity["strategy_ret"].std() * np.sqrt(252)
+sharpe = (equity["strategy_ret"].mean() / equity["strategy_ret"].std()) * np.sqrt(252)
+downside_std = equity.loc[equity["strategy_ret"] < 0, "strategy_ret"].std() * np.sqrt(252)
+sortino = (equity["strategy_ret"].mean() * 252) / downside_std if downside_std > 0 else np.nan
+max_dd = equity["drawdown"].min()
+tracking_error = equity["active_ret"].std() * np.sqrt(252)
+information_ratio = (
+    (equity["active_ret"].mean() * 252) / tracking_error if tracking_error > 0 else np.nan
+)
+beta = np.cov(equity["strategy_ret"], equity["benchmark_ret"])[0, 1] / np.var(equity["benchmark_ret"])
+corr = np.corrcoef(equity["strategy_ret"], equity["benchmark_ret"])[0, 1]
+active_return = strategy_total_return - benchmark_total_return
+turnover_annualized = folds["turnover"].mean()
+oos_fold_pass_rate = (folds["oos_sharpe"] > 1.0).mean()
+
+summary_metrics = pd.DataFrame({
+    "Metric": [
+        "Verdict",
+        "CAGR",
+        "Annualized Volatility",
+        "Sharpe",
+        "Sortino",
+        "Max Drawdown",
+        "Active Return vs SPY",
+        "Tracking Error vs SPY",
+        "Information Ratio vs SPY",
+        "Beta vs SPY",
+        "Correlation vs SPY",
+        "Annualized Turnover",
+        "OOS Fold Pass Rate"
+    ],
+    "Value": [
+        "WATCHLIST",
+        f"{cagr:.2%}",
+        f"{ann_vol:.2%}",
+        f"{sharpe:.2f}",
+        f"{sortino:.2f}",
+        f"{max_dd:.2%}",
+        f"{active_return:.2%}",
+        f"{tracking_error:.2%}",
+        f"{information_ratio:.2f}",
+        f"{beta:.2f}",
+        f"{corr:.2f}",
+        f"{turnover_annualized:.2f}",
+        f"{oos_fold_pass_rate:.0%}"
+    ]
+})
+
+metadata = {
+    "strategy_name": "xsec_mom_lgbm_v12",
+    "run_id": "20260403_221530_a91fd2c_bld184",
+    "model_type": "LightGBM ranker",
+    "universe": "US large-cap equities",
+    "frequency": "Daily features, T+1 execution",
+    "validation": "Walk-forward + CPCV",
+    "benchmark": "SPY",
+    "risk_free": "DFF",
+    "cost_model": "cost_model_v4",
+    "git_commit": "a91fd2c",
+    "data_snapshot_id": "md_20260403_01"
+}
+```
+
+# Strategy Discovery Report
+
+::: {.callout-important}
+
+## Read this first
+
+This document is the **official research artifact** for a single strategy-discovery run.
+Replace the demo-data loader in the first code block with your actual pipeline artifacts. All downstream sections will then populate from real results.
+:::
+
+## Identity and Run Metadata
+
+```{python}
+#| label: tbl-run-metadata
+#| tbl-cap: "Run identity and reproducibility metadata."
+
+pd.DataFrame({
+    "Field": list(metadata.keys()),
+    "Value": list(metadata.values())
+})
+```
+
+## Executive Verdict
+
+::: {.callout-note}
+
+## Verdict
+
+**WATCHLIST**
+
+The strategy shows promising out-of-sample behavior with acceptable benchmark-relative performance and tolerable drawdown, but the edge is not yet stable enough across all validation folds to justify immediate promotion to implementation.
+
+**Top strengths**
+
+* Positive active return versus the market benchmark.
+* Reasonable risk-adjusted performance.
+* Fold pass rate is directionally encouraging.
+* Trade-level distribution is not entirely dependent on a handful of outliers.
+* Regime performance is strongest in favorable trend conditions.
+
+**Top concerns**
+
+* Performance degrades materially in high-volatility and bearish regimes.
+* Robustness across folds is mixed rather than uniformly strong.
+* Cost sensitivity may compress the edge.
+* Feature importance concentration may indicate fragility.
+* Failure period analysis suggests the model is still vulnerable to regime shocks.
+:::
+
+```{python}
+#| label: tbl-summary-metrics
+#| tbl-cap: "Headline summary metrics for the current strategy run."
+
+summary_metrics
+```
+
+## Performance Overview
+
+This section answers the first question: **did the strategy work, and how did it behave through time?**
+
+```{python}
+#| label: fig-equity-curve
+#| fig-cap: "Strategy and benchmark cumulative equity curves."
+
+fig, ax = plt.subplots(figsize=(10, 4.8))
+ax.plot(equity["date"], equity["strategy_curve"], label="Strategy")
+ax.plot(equity["date"], equity["benchmark_curve"], label="SPY")
+ax.set_title("Cumulative Equity Curve")
+ax.set_ylabel("Growth of $1")
+ax.legend()
+ax.grid(alpha=0.25)
+plt.tight_layout()
+plt.show()
+```
+
+```{python}
+#| label: fig-drawdown-curve
+#| fig-cap: "Strategy drawdown through time."
+
+fig, ax = plt.subplots(figsize=(10, 4.2))
+ax.fill_between(equity["date"], equity["drawdown"], 0, alpha=0.75)
+ax.set_title("Drawdown Curve")
+ax.set_ylabel("Drawdown")
+ax.grid(alpha=0.25)
+plt.tight_layout()
+plt.show()
+```
+
+```{python}
+#| label: fig-rolling-sharpe
+#| fig-cap: "Rolling 63-day Sharpe ratio."
+
+fig, ax = plt.subplots(figsize=(10, 4.2))
+ax.plot(equity["date"], equity["rolling_63d_sharpe"])
+ax.axhline(0, linestyle="--", linewidth=1)
+ax.set_title("Rolling 63-Day Sharpe")
+ax.set_ylabel("Sharpe")
+ax.grid(alpha=0.25)
+plt.tight_layout()
+plt.show()
+```
+
+```{python}
+#| label: fig-monthly-heatmap
+#| fig-cap: "Monthly return heatmap."
+
+fig, ax = plt.subplots(figsize=(11, 4.8))
+im = ax.imshow(heatmap.fillna(0).values, aspect="auto")
+ax.set_xticks(range(len(heatmap.columns)))
+ax.set_xticklabels(heatmap.columns)
+ax.set_yticks(range(len(heatmap.index)))
+ax.set_yticklabels(heatmap.index)
+ax.set_title("Monthly Return Heatmap")
+for i in range(len(heatmap.index)):
+    for j in range(len(heatmap.columns)):
+        val = heatmap.iloc[i, j]
+        txt = "" if pd.isna(val) else f"{val:.1%}"
+        ax.text(j, i, txt, ha="center", va="center", fontsize=8)
+plt.colorbar(im, ax=ax, fraction=0.02, pad=0.02)
+plt.tight_layout()
+plt.show()
+```
+
+## Robustness and Validation
+
+This section tests whether the result is robust or simply the product of a lucky sample.
+
+```{python}
+#| label: tbl-fold-summary
+#| tbl-cap: "Fold-level out-of-sample validation summary."
+
+folds.round(3)
+```
+
+```{python}
+#| label: fig-fold-sharpe-distribution
+#| fig-cap: "Distribution of out-of-sample Sharpe values across validation folds."
+
+fig, ax = plt.subplots(figsize=(8.5, 4.2))
+ax.hist(folds["oos_sharpe"], bins=8)
+ax.set_title("Fold OOS Sharpe Distribution")
+ax.set_xlabel("OOS Sharpe")
+ax.grid(alpha=0.25)
+plt.tight_layout()
+plt.show()
+```
+
+```{python}
+#| label: fig-fold-return-boxplot
+#| fig-cap: "Out-of-sample return distribution across validation folds."
+
+fig, ax = plt.subplots(figsize=(8.5, 4.2))
+ax.boxplot(folds["oos_return"], vert=False)
+ax.set_title("Fold OOS Return Distribution")
+ax.set_xlabel("OOS Return")
+ax.grid(alpha=0.25)
+plt.tight_layout()
+plt.show()
+```
+
+::: {.callout-warning}
+
+## Robustness interpretation
+
+Replace this text with your actual decision logic.
+
+Suggested prompts:
+
+* Does the strategy pass in a large majority of folds?
+* Does performance collapse under modest transaction-cost stress?
+* Is the edge concentrated in only one time window?
+* Does the strategy remain attractive after removing the top 5 trades or the best month?
+:::
+
+## Benchmark and Risk-Relative Analysis
+
+This section should determine whether the strategy adds value beyond passive benchmark exposure.
+
+```{python}
+#| label: fig-cumulative-vs-benchmark
+#| fig-cap: "Strategy and benchmark cumulative performance."
+
+fig, ax = plt.subplots(figsize=(10, 4.8))
+ax.plot(equity["date"], equity["strategy_curve"] - 1, label="Strategy")
+ax.plot(equity["date"], equity["benchmark_curve"] - 1, label="SPY")
+ax.set_title("Cumulative Return vs Benchmark")
+ax.set_ylabel("Cumulative Return")
+ax.legend()
+ax.grid(alpha=0.25)
+plt.tight_layout()
+plt.show()
+```
+
+```{python}
+#| label: fig-active-return-curve
+#| fig-cap: "Cumulative active return versus SPY."
+
+fig, ax = plt.subplots(figsize=(10, 4.2))
+ax.plot(equity["date"], equity["active_curve"] - 1)
+ax.set_title("Cumulative Active Return vs SPY")
+ax.set_ylabel("Active Return")
+ax.grid(alpha=0.25)
+plt.tight_layout()
+plt.show()
+```
+
+```{python}
+#| label: fig-rolling-beta
+#| fig-cap: "Rolling 63-day beta versus SPY."
+
+fig, ax = plt.subplots(figsize=(10, 4.2))
+ax.plot(equity["date"], equity["rolling_63d_beta"])
+ax.axhline(1.0, linestyle="--", linewidth=1)
+ax.axhline(0.0, linestyle="--", linewidth=1)
+ax.set_title("Rolling 63-Day Beta vs SPY")
+ax.set_ylabel("Beta")
+ax.grid(alpha=0.25)
+plt.tight_layout()
+plt.show()
+```
+
+## Model Diagnostics
+
+::: {.panel-tabset}
+
+### Score Buckets
+
+```{python}
+#| label: fig-score-buckets
+#| fig-cap: "Mean forward return by prediction-score decile."
+
+fig, ax = plt.subplots(figsize=(9, 4.5))
+ax.bar(bucket_perf["bucket"], bucket_perf["realized_ret_21d"])
+ax.set_title("Score Bucket Performance")
+ax.set_xlabel("Prediction Bucket")
+ax.set_ylabel("Mean 21-Day Return")
+ax.grid(axis="y", alpha=0.25)
+plt.tight_layout()
+plt.show()
+```
+
+Replace this paragraph with a model-specific readout:
+
+* Are returns monotonic across score buckets?
+* Does the bottom decile underperform the top decile meaningfully?
+* Is the score mapping stable across time and folds?
+
+### Feature Importance
+
+```{python}
+#| label: fig-feature-importance
+#| fig-cap: "Model feature importance ranking."
+
+fig, ax = plt.subplots(figsize=(9, 5))
+ax.barh(feature_importance["feature"], feature_importance["importance"])
+ax.set_title("Feature Importance")
+ax.set_xlabel("Importance")
+ax.grid(axis="x", alpha=0.25)
+plt.tight_layout()
+plt.show()
+```
+
+Replace this paragraph with:
+
+* why the top features make economic sense,
+* whether the model is overly concentrated in one feature family,
+* and whether importance is stable through time.
+
+### Calibration / Residual Quality
+
+```{python}
+#| label: fig-score-vs-outcome
+#| fig-cap: "Illustrative relationship between prediction score and realized return."
+
+sample_pred = pred.sample(600, random_state=42)
+
+fig, ax = plt.subplots(figsize=(8.5, 4.5))
+ax.scatter(sample_pred["score"], sample_pred["realized_ret_21d"], alpha=0.35)
+ax.set_title("Prediction Score vs Realized Return")
+ax.set_xlabel("Prediction Score")
+ax.set_ylabel("Realized 21-Day Return")
+ax.grid(alpha=0.25)
+plt.tight_layout()
+plt.show()
+```
+
+Use this tab for:
+
+* calibration curves,
+* residual distributions,
+* confidence diagnostics,
+* or classification threshold diagnostics.
+
+:::
+
+## Trade Behaviour Analysis
+
+```{python}
+#| label: fig-trade-return-distribution
+#| fig-cap: "Distribution of individual trade returns."
+
+fig, ax = plt.subplots(figsize=(8.5, 4.2))
+ax.hist(trades["trade_return"], bins=30)
+ax.set_title("Trade Return Distribution")
+ax.set_xlabel("Trade Return")
+ax.grid(alpha=0.25)
+plt.tight_layout()
+plt.show()
+```
+
+```{python}
+#| label: fig-holding-period-distribution
+#| fig-cap: "Distribution of holding periods."
+
+fig, ax = plt.subplots(figsize=(8.5, 4.2))
+ax.hist(trades["holding_days"], bins=20)
+ax.set_title("Holding Period Distribution")
+ax.set_xlabel("Holding Days")
+ax.grid(alpha=0.25)
+plt.tight_layout()
+plt.show()
+```
+
+```{python}
+#| label: fig-mae-mfe
+#| fig-cap: "Maximum adverse excursion versus maximum favorable excursion."
+
+fig, ax = plt.subplots(figsize=(8.5, 4.5))
+ax.scatter(trades["mae"], trades["mfe"], alpha=0.35)
+ax.set_title("MAE vs MFE")
+ax.set_xlabel("MAE")
+ax.set_ylabel("MFE")
+ax.grid(alpha=0.25)
+plt.tight_layout()
+plt.show()
+```
+
+```{python}
+#| label: tbl-top-and-bottom-trades
+#| tbl-cap: "Largest winners and losers in the trade log."
+
+top_trades = trades.nlargest(5, "trade_return")[["trade_id", "symbol", "trade_return", "holding_days", "sector"]]
+worst_trades = trades.nsmallest(5, "trade_return")[["trade_id", "symbol", "trade_return", "holding_days", "sector"]]
+
+pd.concat(
+    {
+        "Top Trades": top_trades.reset_index(drop=True),
+        "Worst Trades": worst_trades.reset_index(drop=True)
+    },
+    axis=1
+)
+```
+
+## Regime Analysis
+
+```{python}
+#| label: tbl-regime-summary
+#| tbl-cap: "Performance by market regime."
+
+regimes.round(3)
+```
+
+```{python}
+#| label: fig-regime-breakdown
+#| fig-cap: "Mean return by regime."
+
+fig, ax = plt.subplots(figsize=(10, 4.5))
+ax.bar(regimes["regime"], regimes["mean_return"])
+ax.set_title("Performance by Regime")
+ax.set_ylabel("Mean Return")
+ax.tick_params(axis="x", rotation=20)
+ax.grid(axis="y", alpha=0.25)
+plt.tight_layout()
+plt.show()
+```
+
+Replace this section with your actual regime logic:
+
+* volatility regime,
+* trend regime,
+* sector leadership regime,
+* macro/rates regime,
+* and any strategy-specific state segmentation.
+
+## Failure Analysis
+
+The purpose of this section is to explain **how and why the strategy breaks**.
+
+```{python}
+#| label: fig-worst-drawdown-zoom
+#| fig-cap: "Zoom on the worst drawdown interval."
+
+worst_idx = equity["drawdown"].idxmin()
+start_idx = max(0, worst_idx - 40)
+end_idx = min(len(equity) - 1, worst_idx + 20)
+dd_slice = equity.iloc[start_idx:end_idx + 1]
+
+fig, ax = plt.subplots(figsize=(10, 4.5))
+ax.plot(dd_slice["date"], dd_slice["strategy_curve"])
+ax.set_title("Worst Drawdown Window")
+ax.set_ylabel("Strategy Curve")
+ax.grid(alpha=0.25)
+plt.tight_layout()
+plt.show()
+```
+
+::: {.callout-caution}
+
+## Failure diagnosis template
+
+Replace these bullets with a real diagnosis.
+
+* **Primary failure interval:** [insert dates]
+* **Main driver:** beta shock / sector shock / cost drag / model instability / crowding / data problem
+* **Was benchmark-relative underperformance severe?** [yes/no + details]
+* **Did turnover spike?** [yes/no + details]
+* **Was the model concentrated in one feature family or one sector?** [details]
+* **Any leakage or PIT concern uncovered in audit?** [details]
+:::
+
+## Implementation and Reproducibility
+
+Use this section to document exactly what was tested.
+
+### Data sources
+
+* Primary price source: **[replace]**
+* Benchmark source: **SPY**
+* Risk-free source: **DFF**
+* Macro/context sources: **[replace]**
+
+### Backtest assumptions
+
+* Signal timing: **[replace]**
+* Execution timing: **[replace]**
+* Slippage model: **[replace]**
+* Spread model: **[replace]**
+* Funding / borrow assumptions: **[replace]**
+* Rebalance cadence: **[replace]**
+* Capacity constraints: **[replace]**
+
+### Modeling assumptions
+
+* Target: **[replace]**
+* Feature set version: **[replace]**
+* Validation protocol: **[replace]**
+* Hyperparameter source: **[replace]**
+* Random seed policy: **[replace]**
+
+```{python}
+#| label: tbl-repro-metadata
+#| tbl-cap: "Reproducibility metadata."
+
+pd.DataFrame({
+    "Field": [
+        "Strategy Name",
+        "Run ID",
+        "Model Type",
+        "Universe",
+        "Validation",
+        "Benchmark",
+        "Risk-Free",
+        "Cost Model",
+        "Git Commit",
+        "Data Snapshot"
+    ],
+    "Value": [
+        metadata["strategy_name"],
+        metadata["run_id"],
+        metadata["model_type"],
+        metadata["universe"],
+        metadata["validation"],
+        metadata["benchmark"],
+        metadata["risk_free"],
+        metadata["cost_model"],
+        metadata["git_commit"],
+        metadata["data_snapshot_id"]
+    ]
+})
+```
+
+## Factor diagnostics (Alphalens-reloaded)
+
+Optional cross-sectional diagnostics exported by `analysis/alpha_diagnostics/export_alphalens_artifacts.py` into `reports/alpha_diagnostics/<strategy>/<run_id>/`. Set Quarto param `alpha_diagnostics_dir` or environment variable `ALPHA_DIAGNOSTICS_DIR` to that directory so this section loads machine-readable summaries instead of skipping.
+
+```{python}
+#| label: sec-alpha-diagnostics
+#| code-summary: "Load alphalens summary + chart paths when configured"
+
+import json
+import os
+from pathlib import Path
+
+def _resolve_alpha_diagnostics_dir():
+    p = None
+    try:
+        p = params.get("alpha_diagnostics_dir")  # type: ignore[name-defined]
+    except NameError:
+        pass
+    if p:
+        return Path(p)
+    env = os.environ.get("ALPHA_DIAGNOSTICS_DIR", "").strip()
+    return Path(env) if env else None
+
+alpha_diag_dir = _resolve_alpha_diagnostics_dir()
+alpha_summary = None
+alpha_manifest = None
+if alpha_diag_dir and alpha_diag_dir.is_dir():
+    sj = alpha_diag_dir / "alphalens_summary_metrics.json"
+    mj = alpha_diag_dir / "manifest.json"
+    if sj.is_file():
+        alpha_summary = json.loads(sj.read_text(encoding="utf-8"))
+    if mj.is_file():
+        alpha_manifest = json.loads(mj.read_text(encoding="utf-8"))
+```
+
+### Model diagnostics
+
+```{python}
+#| label: tbl-alpha-summary
+#| tbl-cap: "Alphalens summary metrics (when exports are configured)."
+#| eval: true
+
+import pandas as pd
+
+if alpha_summary:
+    pd.DataFrame([alpha_summary])
+else:
+    pd.DataFrame([{"note": "Set params.alpha_diagnostics_dir or ALPHA_DIAGNOSTICS_DIR to enable."}])
+```
+
+### Quantile return analysis, IC stability, turnover / rank persistence
+
+When `alpha_diag_dir` is set, chart PNGs are under `charts/` (for example `ic_timeseries.png`, `mean_return_by_quantile.png`, `top_bottom_spread.png`, `turnover_by_quantile.png`, `factor_rank_autocorrelation.png`). Embed them in a derived report or reference paths from `manifest.json`.
+
+### Group / sector decomposition
+
+`by_group_metrics.parquet` and `charts/by_group_returns.png` are written only when canonical group labels were supplied to the export pipeline—never from ad hoc sector inference.
+
+## Final Decision
+
+::: {.callout-important}
+
+## Decision
+
+**Retest after fixes**
+
+This strategy is not rejected outright, but it should not move straight to deployment. The next pass should focus on:
+
+1. reducing fragility across validation folds,
+2. clarifying regime sensitivity,
+3. testing stronger cost stress,
+4. and confirming the edge remains after removing benchmark drift and sector concentration effects.
+:::
+
+## Appendix
+
+### Additional Notes
+
+* Replace demo charts and tables with production artifacts exported from your pipeline.
+* Keep this document as the canonical report surface.
+* Export supporting machine-readable artifacts separately.
+
+### Optional citation block
+
+If you attach a `references.bib` file and cite sources in the body, Quarto will render the bibliography automatically.
+
+### Optional extra tables
+
+```{python}
+#| label: tbl-sector-concentration
+#| tbl-cap: "Trade count by sector."
+
+trades.groupby("sector").size().reset_index(name="trade_count").sort_values("trade_count", ascending=False)
+```
+
+```{python}
+#| label: tbl-symbol-concentration
+#| tbl-cap: "Trade count by symbol."
+
+trades.groupby("symbol").size().reset_index(name="trade_count").sort_values("trade_count", ascending=False)
+```

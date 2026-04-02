@@ -1,0 +1,37 @@
+sec_sic4_to_sector_etf:
+  mapping_rule_version: sec_sic4_to_sector_etf_v1
+  classification_system: SEC_SIC_4
+  mappings:
+    - source_prefix: "13"
+      sector_etf: XLE
+      sector_name: Energy
+    - source_prefix: "10"
+      sector_etf: XLB
+      sector_name: Materials
+    - source_prefix: "15"
+      sector_etf: XLI
+      sector_name: Industrials
+    - source_prefix: "48"
+      sector_etf: XLC
+      sector_name: Communication Services
+    - source_prefix: "35"
+      sector_etf: XLK
+      sector_name: Information Technology
+    - source_prefix: "60"
+      sector_etf: XLF
+      sector_name: Financials
+    - source_prefix: "80"
+      sector_etf: XLV
+      sector_name: Health Care
+    - source_prefix: "49"
+      sector_etf: XLU
+      sector_name: Utilities
+    - source_prefix: "65"
+      sector_etf: XLRE
+      sector_name: Real Estate
+    - source_prefix: "20"
+      sector_etf: XLP
+      sector_name: Consumer Staples
+    - source_prefix: "56"
+      sector_etf: XLY
+      sector_name: Consumer Discretionary

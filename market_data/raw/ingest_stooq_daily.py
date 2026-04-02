@@ -19,6 +19,7 @@ from market_data.clients.stooq_client import (
     extract_zip,
 )
 from market_data.common.logging import get_logger
+from market_data.common.source_catalog import load_source_catalog
 from market_data.common.paths import raw_path
 from market_data.common.settings import IngestionSettings
 
@@ -98,6 +99,11 @@ def _per_ticker_download(
     return {"method": "per_ticker", "fetched": fetched, "skipped": skipped, "errors": errors}
 
 
+def _skip_unbounded_fallback(settings: IngestionSettings) -> bool:
+    source = load_source_catalog(settings).get("stooq")
+    return source is not None and source.source_class == "supplemental_support"
+
+
 def ingest(
     *,
     settings: IngestionSettings,
@@ -117,6 +123,18 @@ def ingest(
     result = _try_bulk_download(dest)
     if result is not None:
         return result
+
+    if _skip_unbounded_fallback(settings):
+        log.warning(
+            "stooq daily bulk download unavailable; skipping per-ticker fallback for supplemental source"
+        )
+        return {
+            "method": "skipped_bulk_unavailable",
+            "fetched": 0,
+            "skipped": 0,
+            "errors": 0,
+            "warning": "bulk_zip_unavailable",
+        }
 
     symbols = _load_symbols(settings)
     if not symbols:

@@ -75,6 +75,7 @@ uv run python tools/verify_market_data_contracts.py
 uv run python tools/verify_market_data_pit.py
 uv run python tools/verify_market_data_docs_sync.py
 uv run python tools/verify_market_data_bridge.py --panel-path panel_ohlcv_clean.csv --require-manifest
+uv run python tools/verify_market_data_bridge.py --panel-path panel_ohlcv_clean.csv --require-manifest --require-benchmark-artifacts
 uv run python tools/verify_market_data.py
 ```
 
@@ -102,6 +103,7 @@ These commands validate:
 
 ```powershell
 uv run python -m market_data.cli export-latest --output panel_ohlcv_clean.csv
+Get-ChildItem .\panel_ohlcv_clean_benchmark_surface_daily.parquet
 uv run python -m market_data.cli export-asof --asof-date 2026-01-15 --output panel_ohlcv_clean.csv
 ```
 
@@ -118,13 +120,15 @@ The export writes or expects:
 ### 7. Run The Downstream Research Pipeline
 
 ```powershell
-uv run python Pipeline.py --input_panel_csv panel_ohlcv_clean.csv --output_dir pipeline_outputs
-uv run python Pipeline.py --input_panel_csv panel_ohlcv_clean.csv --output_dir pipeline_outputs --resume
+uv run python Pipeline.py --input_panel_csv panel_ohlcv_clean.csv --output_dir pipeline_outputs --strategy_report_template strategy-report.qmd
+uv run python Pipeline.py --input_panel_csv panel_ohlcv_clean.csv --output_dir pipeline_outputs --strategy_report_template strategy-report.qmd --resume
 ```
 
 The input panel sidecar manifest is mandatory. `Pipeline.py` now fails closed when the exported CSV does not have a matching `.manifest.json` with non-empty `dataset_build_id` and `export_panel_version_id`.
 
 When the optional `lineage` dependency group is installed and file-backed lineage emission succeeds, downstream runs also write `pipeline_outputs/06_state/lineage_summary.json` plus file-backed OpenLineage events under `pipeline_outputs/06_state/lineage_events/`.
+
+The canonical Quarto report template path is recorded in downstream artifacts as `strategy_report_template_path` and defaults to `strategy-report.qmd`.
 
 ## Manifest Surfaces
 

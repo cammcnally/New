@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -146,3 +147,37 @@ def test_run_e2e_persists_current_stage_before_inprocess_failure(
     state = json.loads(e2e_module._paths(test_settings)["state"].read_text(encoding="utf-8"))
     assert state["current_stage"] == "canonical_market_data"
     assert state["last_failed_stage"] == "canonical_market_data"
+
+
+def test_dependency_sync_retries_without_cache_after_windows_cache_lock(
+    monkeypatch: pytest.MonkeyPatch,
+    test_settings,
+) -> None:
+    e2e_module._ensure_dirs(test_settings)
+    calls: list[list[str]] = []
+
+    def fake_run(command, **kwargs):  # type: ignore[no-untyped-def]
+        calls.append(command)
+        if len(calls) == 1:
+            return subprocess.CompletedProcess(
+                command,
+                1,
+                "",
+                "\n".join(
+                    [
+                        "Failed to read from the distribution cache",
+                        "failed to rename file",
+                        "os error 32",
+                    ]
+                ),
+            )
+        return subprocess.CompletedProcess(command, 0, "sync ok", "")
+
+    monkeypatch.setattr(e2e_module.subprocess, "run", fake_run)
+
+    log_path, command = e2e_module._run_dependency_sync(test_settings)
+
+    assert calls[0] == e2e_module._dependency_sync_command()
+    assert calls[1] == e2e_module._dependency_sync_command(no_cache=True)
+    assert command.endswith("--no-cache")
+    assert "retry after uv cache lock" in Path(log_path).read_text(encoding="utf-8")

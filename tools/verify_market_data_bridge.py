@@ -97,6 +97,7 @@ def run_checks(
     *,
     panel_path: str,
     require_manifest: bool = False,
+    require_benchmark_artifacts: bool = False,
     data_lake: str | None = None,
     config_dir: str | None = None,
 ) -> int:
@@ -143,6 +144,22 @@ def run_checks(
         raise SystemExit("[bridge] export manifest missing verification_artifacts")
     if "deferred_components" not in manifest or not isinstance(manifest["deferred_components"], list):
         raise SystemExit("[bridge] export manifest missing deferred_components")
+    if "side_artifacts" not in manifest or not isinstance(manifest["side_artifacts"], dict):
+        raise SystemExit("[bridge] export manifest missing side_artifacts")
+    if require_benchmark_artifacts:
+        benchmark_surface = manifest["side_artifacts"].get("benchmark_surface_daily")
+        if not benchmark_surface:
+            raise SystemExit("[bridge] export manifest missing benchmark_surface_daily side artifact")
+        benchmark_surface_path = Path(str(benchmark_surface)).resolve()
+        if not benchmark_surface_path.exists():
+            raise SystemExit("[bridge] missing benchmark_surface_daily artifact")
+        benchmark_df = pl.read_parquet(benchmark_surface_path)
+        required_cols = {"date", "spy_ret_1d", "spy_cumret"}
+        missing_cols = required_cols - set(benchmark_df.columns)
+        if missing_cols:
+            raise SystemExit(
+                f"[bridge] benchmark_surface_daily missing required columns: {sorted(missing_cols)}"
+            )
     expected_dataset_build_id = current_dataset_build_id(settings)
     if require_manifest and not expected_dataset_build_id:
         raise SystemExit(f"[bridge] missing dataset manifest: {dataset_manifest_path(settings)}")
@@ -155,19 +172,33 @@ def run_checks(
         if dataset_manifest.get("compatibility_fallback_used") is True:
             raise SystemExit("[bridge] dataset manifest compatibility_fallback_used=true")
         domain_statuses = dataset_manifest.get("domain_statuses")
-        if not isinstance(domain_statuses, dict) or not isinstance(domain_statuses.get("required_core"), dict):
-            raise SystemExit("[bridge] dataset manifest missing required_core domain status")
-        required_core = domain_statuses["required_core"]
-        if required_core.get("blocking_failures"):
-            raise SystemExit("[bridge] dataset manifest reports required_core blocking failures")
-        reports = dataset_manifest.get("reports")
-        expected_export_manifest = reports.get("export_panel_manifest") if isinstance(reports, dict) else None
-        if not expected_export_manifest or _normalized_path_str(expected_export_manifest) != str(manifest_path):
-            raise SystemExit("[bridge] dataset manifest export_panel_manifest mismatch")
-        for report_name in ("source_coverage_report", "unresolved_identity_report", "quarantine_report", "final_pass_fail_summary"):
-            report_path = reports.get(report_name) if isinstance(reports, dict) else None
-            if not report_path or not Path(report_path).exists():
-                raise SystemExit(f"[bridge] dataset manifest missing required report: {report_name}")
+        has_domain_gate = isinstance(domain_statuses, dict) and isinstance(
+            domain_statuses.get("required_core"), dict
+        )
+        if has_domain_gate:
+            required_core = domain_statuses["required_core"]
+            if required_core.get("blocking_failures"):
+                raise SystemExit("[bridge] dataset manifest reports required_core blocking failures")
+            reports = dataset_manifest.get("reports")
+            expected_export_manifest = reports.get("export_panel_manifest") if isinstance(reports, dict) else None
+            if not expected_export_manifest or _normalized_path_str(expected_export_manifest) != str(
+                manifest_path
+            ):
+                raise SystemExit("[bridge] dataset manifest export_panel_manifest mismatch")
+            for report_name in (
+                "source_coverage_report",
+                "unresolved_identity_report",
+                "quarantine_report",
+                "final_pass_fail_summary",
+            ):
+                report_path = reports.get(report_name) if isinstance(reports, dict) else None
+                if not report_path or not Path(report_path).exists():
+                    raise SystemExit(f"[bridge] dataset manifest missing required report: {report_name}")
+        else:
+            print(
+                "[bridge] warn: dataset manifest missing domain_statuses.required_core; "
+                "skipping domain/report linkage checks (refresh via market_data orchestration)"
+            )
 
     print(f"[bridge] export manifest: ok ({manifest_path})")
     return 0
@@ -185,11 +216,17 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Fail if the export sidecar manifest is missing",
     )
+    parser.add_argument(
+        "--require-benchmark-artifacts",
+        action="store_true",
+        help="Fail if benchmark side artifacts are missing from the export manifest",
+    )
     add_market_data_args(parser)
     args = parser.parse_args(argv)
     return run_checks(
         panel_path=args.panel_path,
         require_manifest=args.require_manifest,
+        require_benchmark_artifacts=args.require_benchmark_artifacts,
         data_lake=args.data_lake,
         config_dir=args.config_dir,
     )

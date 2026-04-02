@@ -263,6 +263,10 @@ Additional optional groups:
 uv sync --group dev --group control-plane --group ingestion --group ingestion-test --group ml --group data --group lineage --group orchestrator
 ```
 
+Factor diagnostics (optional): add `--group analysis` to install pinned `alphalens-reloaded` for `analysis/alpha_diagnostics/` exports and `tests/analysis/`.
+
+The canonical export bridge now writes a benchmark side artifact next to the panel CSV, advertised through the panel manifest under `side_artifacts.benchmark_surface_daily`. `Pipeline.py` reads that manifest metadata rather than guessing benchmark paths.
+
 ## Common Workflows
 
 ### 1. Run The Authoritative Local E2E Flow
@@ -309,7 +313,8 @@ Direct `Pipeline.py` runs are valid only when that sidecar exists and carries bo
 ```powershell
 .\.venv\Scripts\python.exe Pipeline.py `
   --input_panel_csv panel_ohlcv_clean.csv `
-  --output_dir pipeline_outputs
+  --output_dir pipeline_outputs `
+  --strategy_report_template strategy-report.qmd
 ```
 
 ### 5. Resume The Downstream Run
@@ -318,6 +323,7 @@ Direct `Pipeline.py` runs are valid only when that sidecar exists and carries bo
 .\.venv\Scripts\python.exe Pipeline.py `
   --input_panel_csv panel_ohlcv_clean.csv `
   --output_dir pipeline_outputs `
+  --strategy_report_template strategy-report.qmd `
   --resume
 ```
 
@@ -329,6 +335,37 @@ When the optional `lineage` dependency group is installed and file-backed lineag
 - file-backed OpenLineage events under `pipeline_outputs/06_state/lineage_events/`
 
 These lineage artifacts carry the same `dataset_build_id` and `export_panel_version_id` references as the export manifest and MLflow tags.
+
+### 6. Render The Canonical Strategy Report Template
+
+The canonical Quarto source template is:
+
+- `strategy-report.qmd`
+
+Pipeline artifacts now record this path in:
+
+- `pipeline_outputs/02_metrics/overall_metrics.json` (`strategy_report_template_path`)
+- `pipeline_outputs/05_reports/strategy_report_template_path.txt`
+- `pipeline_outputs/06_state/config_snapshot.json` (`strategy_report_template`)
+
+Install reporting dependencies (Python + Quarto CLI):
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install jupyter ipykernel marimo
+winget install --id Posit.Quarto -e --accept-package-agreements --accept-source-agreements
+```
+
+Render:
+
+```powershell
+quarto render strategy-report.qmd
+```
+
+If `quarto` is not immediately on PATH in the current terminal session, use:
+
+```powershell
+C:\PROGRA~1\Quarto\bin\quarto.cmd render strategy-report.qmd
+```
 
 ## Validation Commands
 

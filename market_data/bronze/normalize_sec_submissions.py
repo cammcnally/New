@@ -48,6 +48,7 @@ def normalize(
                 "company_name": company_name,
                 "ticker_primary": tickers[0] if tickers else "",
                 "exchange_primary": exchanges[0] if exchanges else "",
+                "sic": data.get("sic", ""),
                 "accession_no": filing.get("accessionNumber", ""),
                 "form_type": filing.get("form", ""),
                 "filing_date": filing.get("filingDate", ""),

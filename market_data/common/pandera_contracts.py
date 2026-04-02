@@ -39,7 +39,9 @@ from market_data.common.schema_registry import (
 
 ASSET_TYPE_VALUES = frozenset({"equity", "fund", "index", "unknown"})
 SECURITY_TYPE_VALUES = frozenset({"common_stock", "etf", "etp_proxy", "index", "unknown"})
-CLASSIFICATION_SYSTEM_VALUES = frozenset({"gics", "naics", "sic", "benchmark_group", "custom"})
+CLASSIFICATION_SYSTEM_VALUES = frozenset(
+    {"gics", "naics", "sic", "benchmark_group", "custom", "SEC_SIC_4"}
+)
 BENCHMARK_TYPE_VALUES = frozenset(
     {
         "market",
@@ -55,21 +57,6 @@ BENCHMARK_TYPE_VALUES = frozenset(
 )
 CANONICAL_OR_PROXY_VALUES = frozenset({"canonical", "proxy"})
 CORPORATE_ACTION_TYPE_VALUES = frozenset({"split", "dividend"})
-
-MAPPING_TYPE_VALUES = frozenset(
-    {
-        "default_market_benchmark",
-        "optional_alternate_benchmark",
-        "broad_market",
-        "sector",
-        "duration",
-        "credit",
-        "volatility_context",
-        "tradable_vol_proxy",
-        "macro_context",
-        "custom",
-    }
-)
 
 CONTRACT_DEFINED_DEFERRED = frozenset(
     {
@@ -218,6 +205,39 @@ def _ensure_adjustment_factors_silver_cumulative_positive(df: pl.DataFrame, tabl
         )
 
 
+_CANONICAL_SECTOR_ETF_SYMBOLS = frozenset(
+    {"XLC", "XLY", "XLP", "XLE", "XLF", "XLV", "XLI", "XLB", "XLRE", "XLK", "XLU"}
+)
+
+
+def _ensure_benchmark_symbol_unique(df: pl.DataFrame, table_name: str) -> None:
+    dup = df.group_by("symbol").len().filter(pl.col("len") > 1)
+    if len(dup) > 0:
+        raise ContractValidationError(f"[{table_name}] symbol column must be unique")
+
+
+def _ensure_sole_primary_market_benchmark_is_spy(df: pl.DataFrame, table_name: str) -> None:
+    prim = df.filter(pl.col("default_usage") == "default_market_benchmark")
+    if prim.height != 1:
+        raise ContractValidationError(
+            f"[{table_name}] expected exactly one default_market_benchmark row, got {prim.height}"
+        )
+    if prim.item(0, "symbol") != "SPY":
+        raise ContractValidationError(
+            f"[{table_name}] default_market_benchmark must be SPY, got {prim.item(0, 'symbol')!r}"
+        )
+
+
+def _ensure_canonical_sector_benchmark_layer(df: pl.DataFrame, table_name: str) -> None:
+    sector_rows = df.filter(pl.col("benchmark_type") == "sector")
+    symbols = frozenset(sector_rows["symbol"].to_list())
+    if symbols != _CANONICAL_SECTOR_ETF_SYMBOLS:
+        raise ContractValidationError(
+            f"[{table_name}] sector benchmarks must be exactly the 11 canonical "
+            f"sector ETF symbols; got {sorted(symbols)}"
+        )
+
+
 def _ensure_benchmark_roles(df: pl.DataFrame, table_name: str) -> None:
     vix = df.filter(pl.col("symbol") == "^VIX")
     if len(vix) != 1:
@@ -324,8 +344,7 @@ INSTRUMENT_CLASSIFICATION_HISTORY_SCHEMA = pa.DataFrameSchema(
 INSTRUMENT_BENCHMARK_MAP_SCHEMA = pa.DataFrameSchema(
     _required_columns(
         INSTRUMENT_BENCHMARK_MAP,
-        nullable={"classification_system", "effective_to_date"},
-        enum_checks={"mapping_type": MAPPING_TYPE_VALUES},
+        nullable={"sector_benchmark_id", "effective_to_date"},
     ),
 )
 
@@ -456,7 +475,7 @@ CONTRACTS: dict[str, TableContract] = {
             lambda df, table_name: _ensure_non_overlapping_windows(
                 df,
                 table_name,
-                group_cols=["instrument_id", "mapping_type", "benchmark_instrument_id"],
+                group_cols=["instrument_id"],
                 start_col="effective_from_date",
                 end_col="effective_to_date",
             ),
@@ -468,6 +487,9 @@ CONTRACTS: dict[str, TableContract] = {
         schema=BENCHMARK_DEFINITIONS_SCHEMA,
         validators=(
             lambda df, table_name: _ensure_pk_unique(df, table_name, BENCHMARK_DEFINITIONS_PK),
+            _ensure_benchmark_symbol_unique,
+            _ensure_sole_primary_market_benchmark_is_spy,
+            _ensure_canonical_sector_benchmark_layer,
             _ensure_benchmark_roles,
         ),
         status="canonical_live",
@@ -501,7 +523,7 @@ CONTRACTS: dict[str, TableContract] = {
             _ensure_ohlc_sane,
             _ensure_non_negative_volume,
         ),
-        status="contract_defined_deferred",
+        status="canonical_live",
     ),
     "corporate_actions": TableContract(
         name="corporate_actions",
@@ -558,6 +580,7 @@ def contract_status(table_name: str) -> str:
 # Validators safe to run on each parquet partition/file independently (no cross-file PK/window).
 _PARTITION_LOCAL_VALIDATORS: dict[str, tuple[Callable[[pl.DataFrame, str], None], ...]] = {
     "prices_1d_unadjusted": (_ensure_ohlc_sane, _ensure_non_negative_volume),
+    "benchmark_prices_daily": (_ensure_ohlc_sane, _ensure_non_negative_volume),
     "macro_observations_vintage": (_ensure_release_not_after_available,),
     "macro_asof_daily": (_ensure_asof_not_future_available,),
     "trading_calendar": (_ensure_trading_calendar_sessions,),
@@ -572,6 +595,7 @@ _TABLE_PK_COLUMNS: dict[str, list[str]] = {
     "instrument_classification_history": list(INSTRUMENT_CLASSIFICATION_HISTORY_PK),
     "instrument_benchmark_map": list(INSTRUMENT_BENCHMARK_MAP_PK),
     "benchmark_definitions": list(BENCHMARK_DEFINITIONS_PK),
+    "benchmark_prices_daily": list(BENCHMARK_PRICES_DAILY_SILVER_PK),
     "trading_calendar": list(TRADING_CALENDAR_PK),
 }
 

@@ -19,6 +19,7 @@ _TIMEOUT = httpx.Timeout(30.0, read=60.0)
 
 SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik}.json"
 COMPANYFACTS_URL = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
+COMPANY_TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
 
 
 class SecClient:
@@ -119,5 +120,14 @@ class SecClient:
         if not data:
             return {"cik": padded, "facts": {}, "fetched_at": utc_now().isoformat()}
 
+        data["fetched_at"] = utc_now().isoformat()
+        return data
+
+    def fetch_company_tickers(self) -> dict[str, Any]:
+        """Fetch SEC-maintained ticker to CIK bootstrap mapping."""
+        log.debug("fetching SEC company_tickers bootstrap")
+        data = self._get(COMPANY_TICKERS_URL)
+        if not data:
+            return {"fetched_at": utc_now().isoformat(), "data": {}}
         data["fetched_at"] = utc_now().isoformat()
         return data

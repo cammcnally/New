@@ -11,11 +11,13 @@ from Pipeline import (
     FEATURE_VALIDATION_REPORT_COLUMNS,
     MODEL_COMPARISON_REPORT_COLUMNS,
     PipelineConfig,
+    compute_benchmark_diagnostics,
     apply_empirical_probability_map,
     build_feature_set_version,
     build_feature_registry,
     build_feature_validation_report,
     load_input_build_metadata,
+    load_benchmark_surface_from_metadata,
     require_input_build_metadata,
     build_model_comparison_report,
     compute_daily_return_diagnostics,
@@ -33,6 +35,14 @@ pytestmark = pytest.mark.helper
 def test_load_input_build_metadata_reads_export_manifest_sidecar(tmp_path: Path) -> None:
     panel_path = tmp_path / "panel.csv"
     panel_path.write_text("ticker,timestamp_utc,open,high,low,close,volume,is_incomplete_session\n")
+    benchmark_surface = tmp_path / "panel_benchmark_surface_daily.parquet"
+    pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2024-01-08"]),
+            "spy_ret_1d": [0.01],
+            "spy_cumret": [0.01],
+        }
+    ).to_parquet(benchmark_surface)
     manifest_path = Path(str(panel_path) + ".manifest.json")
     manifest_path.write_text(
         json.dumps(
@@ -41,6 +51,7 @@ def test_load_input_build_metadata_reads_export_manifest_sidecar(tmp_path: Path)
                 "export_panel_version_id": "export-build-1",
                 "contract_name": "export_panel",
                 "content_hash": "abc123",
+                "side_artifacts": {"benchmark_surface_daily": str(benchmark_surface)},
             }
         ),
         encoding="utf-8",
@@ -52,6 +63,52 @@ def test_load_input_build_metadata_reads_export_manifest_sidecar(tmp_path: Path)
     assert metadata["export_panel_version_id"] == "export-build-1"
     assert metadata["input_panel_manifest_path"] == str(manifest_path)
     assert metadata["input_panel_manifest_present"] is True
+    assert metadata["benchmark_surface_path"] == str(benchmark_surface)
+    assert metadata["benchmark_surface_present"] is True
+
+
+def test_load_benchmark_surface_from_metadata_reads_manifest_advertised_artifact(
+    tmp_path: Path,
+) -> None:
+    benchmark_surface = tmp_path / "benchmark_surface.parquet"
+    pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2024-01-08", "2024-01-09"]),
+            "spy_ret_1d": [0.01, 0.02],
+            "spy_cumret": [0.01, 0.0302],
+            "dff_daily_rate": [0.0001, 0.0001],
+        }
+    ).to_parquet(benchmark_surface)
+    df = load_benchmark_surface_from_metadata(
+        {"benchmark_surface_path": str(benchmark_surface)}
+    )
+    assert df is not None
+    assert list(df.columns) == ["date", "spy_ret_1d", "spy_cumret", "dff_daily_rate"]
+
+
+def test_compute_benchmark_diagnostics_returns_spy_and_dff_metrics() -> None:
+    daily_frame = pd.DataFrame(
+        {
+            "session_date_ny": ["2024-01-08", "2024-01-09", "2024-01-10"],
+            "daily_return": [0.015, -0.005, 0.010],
+        }
+    )
+    benchmark_surface = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2024-01-08", "2024-01-09", "2024-01-10"]).date,
+            "spy_ret_1d": [0.010, -0.010, 0.005],
+            "spy_cumret": [0.010, -0.0001, 0.0049],
+            "dff_daily_rate": [0.0001, 0.0001, 0.0001],
+        }
+    )
+    metrics = compute_benchmark_diagnostics(daily_frame, benchmark_surface)
+    assert metrics["benchmark_surface_present"] == 1.0
+    assert metrics["benchmark_obs"] == 3.0
+    assert math.isfinite(metrics["tracking_error_vs_spy"])
+    assert math.isfinite(metrics["information_ratio_vs_spy"])
+    assert math.isfinite(metrics["beta_vs_spy"])
+    assert math.isfinite(metrics["correlation_vs_spy"])
+    assert math.isfinite(metrics["excess_return_mean_daily_vs_dff"])
 
 
 def test_require_input_build_metadata_rejects_missing_manifest(tmp_path: Path) -> None:

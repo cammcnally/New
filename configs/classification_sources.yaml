@@ -1,0 +1,8 @@
+classification_sources:
+  primary:
+    source_name: SEC_EDGAR_XBRL
+    classification_system: SEC_SIC_4
+    field_precedence:
+      - "dei:EntityPrimarySicNumber"
+      - "filing_header_sic"
+    missing_policy: keep_missing

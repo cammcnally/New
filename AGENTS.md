@@ -166,7 +166,8 @@ The control plane is local-first, Phase 1-safe, and fail-closed.
       "openai", "openai-agents", "python-dotenv",
       "dagster", "dagster-webserver",
       "great-expectations", "dvc", "dvclive",
-      "mlflow", "feast", "openlineage-python"
+      "mlflow", "feast", "openlineage-python",
+      "alphalens-reloaded"
     ],
     "node_allowlist": [
       "@openai/codex-sdk"

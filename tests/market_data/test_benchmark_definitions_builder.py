@@ -27,9 +27,12 @@ def test_build_benchmark_definitions_emits_canonical_catalog(test_settings) -> N
     out = read_parquet(silver_path("benchmark_definitions", test_settings)).collect()
 
     assert result["rows"] >= 3
+    assert "benchmark_id" in out.columns
+    assert out["benchmark_id"].n_unique() == out.height
     assert "^VIX" in out["symbol"].to_list()
     assert "VIXY" in out["symbol"].to_list()
     assert "SPY" in out["symbol"].to_list()
+    assert (out.filter(pl.col("symbol") == "SPY")["benchmark_id"].item()) == "bm_SPY"
 
 
 def test_build_benchmark_prices_daily_uses_canonical_instrument_master(

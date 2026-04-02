@@ -236,21 +236,9 @@ def test_export_panel_contract_rejects_duplicate_keys() -> None:
 
 
 def test_benchmark_definitions_contract_accepts_valid_catalog() -> None:
-    df = pl.DataFrame(
-        {
-            "group": ["volatility", "volatility", "broad_market"],
-            "symbol": ["^VIX", "VIXY", "SPY"],
-            "benchmark_type": ["volatility_index", "volatility_etp", "market"],
-            "semantic_role": [
-                "canonical spot-volatility index reference",
-                "tradable volatility ETP proxy",
-                "default broad market benchmark",
-            ],
-            "default_usage": ["volatility_context", "tradable_vol_proxy", "default_market_benchmark"],
-            "proxy_for": [None, "^VIX", None],
-            "canonical_or_proxy": ["canonical", "proxy", "canonical"],
-        }
-    )
+    from tests.market_data.benchmark_contract_fixtures import minimal_valid_benchmark_definitions_pl
+
+    df = minimal_valid_benchmark_definitions_pl()
 
     validated = validate_contract_df("benchmark_definitions", df)
 
@@ -258,19 +246,13 @@ def test_benchmark_definitions_contract_accepts_valid_catalog() -> None:
 
 
 def test_benchmark_definitions_contract_rejects_invalid_vixy_mapping() -> None:
-    df = pl.DataFrame(
-        {
-            "group": ["volatility", "volatility"],
-            "symbol": ["^VIX", "VIXY"],
-            "benchmark_type": ["volatility_index", "volatility_index"],
-            "semantic_role": [
-                "canonical spot-volatility index reference",
-                "incorrect duplicate spot-volatility reference",
-            ],
-            "default_usage": ["volatility_context", "volatility_context"],
-            "proxy_for": [None, "^VIX"],
-            "canonical_or_proxy": ["canonical", "canonical"],
-        }
+    from tests.market_data.benchmark_contract_fixtures import minimal_valid_benchmark_definitions_pl
+
+    df = minimal_valid_benchmark_definitions_pl().with_columns(
+        pl.when(pl.col("symbol") == "VIXY")
+        .then(pl.lit("volatility_index"))
+        .otherwise(pl.col("benchmark_type"))
+        .alias("benchmark_type")
     )
 
     with pytest.raises(ContractValidationError, match="VIXY"):
@@ -347,23 +329,54 @@ def test_instrument_classification_history_contract_rejects_overlapping_windows(
         validate_contract_df("instrument_classification_history", df)
 
 
+def test_instrument_classification_history_contract_accepts_sec_sic_4() -> None:
+    df = pl.DataFrame(
+        {
+            "instrument_id": [1],
+            "classification_system": ["SEC_SIC_4"],
+            "sector_code": ["1311"],
+            "sector_name": ["Crude petroleum and natural gas"],
+            "industry_group_code": [None],
+            "industry_group_name": [None],
+            "industry_code": [None],
+            "industry_name": [None],
+            "subindustry_code": [None],
+            "subindustry_name": [None],
+            "effective_from_date": [date(2024, 1, 1)],
+            "effective_to_date": [None],
+            "source": ["sec_edgar"],
+            "ingested_at_utc": [_utc(2024, 1, 31)],
+        }
+    ).with_columns(
+        pl.col("industry_group_code").cast(pl.Utf8),
+        pl.col("industry_group_name").cast(pl.Utf8),
+        pl.col("industry_code").cast(pl.Utf8),
+        pl.col("industry_name").cast(pl.Utf8),
+        pl.col("subindustry_code").cast(pl.Utf8),
+        pl.col("subindustry_name").cast(pl.Utf8),
+        pl.col("effective_to_date").cast(pl.Date),
+        pl.col("ingested_at_utc").cast(pl.Datetime("us", "UTC")),
+    )
+    out = validate_contract_df("instrument_classification_history", df)
+    assert out.height == 1
+
+
 def test_instrument_benchmark_map_contract_rejects_overlapping_windows() -> None:
     df = pl.DataFrame(
         {
             "instrument_id": [1, 1],
-            "mapping_type": ["default_market_benchmark", "default_market_benchmark"],
-            "benchmark_instrument_id": [9001, 9001],
-            "classification_system": [None, None],
-            "mapping_confidence": [0.9, 0.9],
+            "market_benchmark_id": ["bm_SPY", "bm_SPY"],
+            "sector_benchmark_id": ["bm_XLK", "bm_XLK"],
             "effective_from_date": [date(2024, 1, 1), date(2024, 1, 15)],
             "effective_to_date": [date(2024, 1, 31), None],
             "mapping_rule_version": ["benchmark_map_v1", "benchmark_map_v1"],
-            "created_at_utc": [_utc(2024, 1, 1), _utc(2024, 1, 15)],
+            "mapping_source": ["sec_sic_crosswalk", "sec_sic_crosswalk"],
+            "asof_timestamp": [_utc(2024, 1, 1), _utc(2024, 1, 15)],
         }
     ).with_columns(
-        pl.col("classification_system").cast(pl.Utf8),
         pl.col("effective_to_date").cast(pl.Date),
-        pl.col("created_at_utc").cast(pl.Datetime("us", "UTC")),
+        pl.col("sector_benchmark_id").cast(pl.Utf8),
+        pl.col("asof_timestamp").cast(pl.Datetime("us", "UTC")),
     )
 
     with pytest.raises(ContractValidationError, match="overlap"):

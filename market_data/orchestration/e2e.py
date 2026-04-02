@@ -122,6 +122,104 @@ def _run_subprocess(command: list[str], *, stage: str, settings: IngestionSettin
     return str(log_path)
 
 
+def _dependency_sync_command(*, no_cache: bool = False) -> list[str]:
+    command = [
+        "uv",
+        "sync",
+        "--group",
+        "dev",
+        "--group",
+        "control-plane",
+        "--group",
+        "ingestion",
+        "--group",
+        "ingestion-test",
+        "--group",
+        "data",
+        "--group",
+        "ml",
+    ]
+    if no_cache:
+        command.append("--no-cache")
+    return command
+
+
+def _write_subprocess_log(
+    path: Path,
+    *,
+    command: list[str],
+    result: subprocess.CompletedProcess[str],
+    note: str | None = None,
+    append: bool = False,
+) -> None:
+    lines = []
+    if note:
+        lines.extend([f"[{note}]", ""])
+    lines.extend(
+        [
+            f"$ {' '.join(command)}",
+            "",
+            "STDOUT:",
+            result.stdout,
+            "",
+            "STDERR:",
+            result.stderr,
+        ]
+    )
+    payload = "\n".join(lines)
+    if append and path.exists():
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write("\n\n" + payload)
+    else:
+        path.write_text(payload, encoding="utf-8")
+
+
+def _is_uv_cache_lock_failure(result: subprocess.CompletedProcess[str]) -> bool:
+    text = f"{result.stdout}\n{result.stderr}".lower()
+    return (
+        "failed to read from the distribution cache" in text
+        and "failed to rename file" in text
+        and "os error 32" in text
+    )
+
+
+def _run_dependency_sync(settings: IngestionSettings) -> tuple[str, str]:
+    command = _dependency_sync_command()
+    log_path = _log_path(settings, "dependency_sync")
+    result = subprocess.run(
+        command,
+        cwd=_REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    _write_subprocess_log(log_path, command=command, result=result)
+    if result.returncode == 0:
+        return str(log_path), " ".join(command)
+    if _is_uv_cache_lock_failure(result):
+        retry_command = _dependency_sync_command(no_cache=True)
+        retry_result = subprocess.run(
+            retry_command,
+            cwd=_REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        _write_subprocess_log(
+            log_path,
+            command=retry_command,
+            result=retry_result,
+            note="retry after uv cache lock",
+            append=True,
+        )
+        if retry_result.returncode == 0:
+            return str(log_path), " ".join(retry_command)
+        raise RuntimeError(
+            f"dependency_sync failed with exit code {retry_result.returncode} after cache-lock retry. See {log_path}"
+        )
+    raise RuntimeError(f"dependency_sync failed with exit code {result.returncode}. See {log_path}")
+
+
 def _write_stage_marker(
     settings: IngestionSettings,
     *,
@@ -297,6 +395,7 @@ def _render_status_markdown(summary: dict[str, Any]) -> str:
             f"- verification JSON: `{summary.get('verification_json')}`",
             f"- verification Markdown: `{summary.get('verification_markdown')}`",
             f"- final report path: `{summary.get('final_report_path')}`",
+            f"- strategy report template path: `{summary.get('strategy_report_template_path')}`",
             f"- status summary path: `{summary.get('status_md_path')}`",
             "",
             "## Deferred Components",
@@ -358,6 +457,7 @@ def _build_status_payload(
         "exported_panel_path": str(panel_path),
         "pipeline_output_dir": str(pipeline_output_dir),
         "final_report_path": str(pipeline_output_dir / "05_reports" / "final_report.md"),
+        "strategy_report_template_path": str((_REPO_ROOT / "strategy-report.qmd").resolve()),
         "status_md_path": str(state_paths["status_md"]),
         "state_path": str(state_paths["state"]),
         "canonical_data_updated": any(r.stage == "canonical_market_data" and r.status == "passed" for r in stage_records),
@@ -466,27 +566,7 @@ def run_e2e(
             _write_json(state_paths["state"], state)
 
             if stage == "dependency_sync":
-                command = "uv sync --group dev --group control-plane --group ingestion --group ingestion-test --group data --group ml"
-                log_path = _run_subprocess(
-                    [
-                        "uv",
-                        "sync",
-                        "--group",
-                        "dev",
-                        "--group",
-                        "control-plane",
-                        "--group",
-                        "ingestion",
-                        "--group",
-                        "ingestion-test",
-                        "--group",
-                        "data",
-                        "--group",
-                        "ml",
-                    ],
-                    stage=stage,
-                    settings=settings,
-                )
+                log_path, command = _run_dependency_sync(settings)
             elif stage == "canonical_market_data":
                 watermark = read_watermark(settings)
                 if watermark is None:
