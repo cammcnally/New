@@ -9,13 +9,29 @@ import pytest
 
 from market_data.common.io_parquet import write_parquet
 from market_data.common.manifest import build_manifest, write_manifest
-from market_data.common.paths import manifest_dir, silver_path
+from market_data.common.paths import manifest_dir, qa_dir, silver_path
 from market_data.bridge.export_pipeline_panel import export_panel
 from tools.verify_market_data_bridge import run_checks
 
 pytestmark = pytest.mark.ingestion
 
 _CONFIG_DIR = Path(__file__).resolve().parents[2] / "configs"
+
+
+def _required_report_paths(test_settings) -> dict[str, str]:
+    qa_root = qa_dir(test_settings)
+    qa_root.mkdir(parents=True, exist_ok=True)
+    manifest_root = manifest_dir(test_settings)
+    manifest_root.mkdir(parents=True, exist_ok=True)
+    report_map = {
+        "source_coverage_report": qa_root / "source_coverage.json",
+        "unresolved_identity_report": qa_root / "unresolved_identity_prices_1d.json",
+        "quarantine_report": qa_root / "quarantine_summary.json",
+        "final_pass_fail_summary": manifest_root / "final_pass_fail_summary.json",
+    }
+    for path in report_map.values():
+        path.write_text("{}", encoding="utf-8")
+    return {name: str(path) for name, path in report_map.items()}
 
 
 def test_bridge_verifier_fails_when_required_panel_is_missing(tmp_path: Path) -> None:
@@ -58,6 +74,11 @@ def test_bridge_verifier_requires_dataset_manifest_to_register_export_manifest(
             datasets=[],
             run_id="dataset-build-1",
             canonical_export_ready=True,
+            reports=_required_report_paths(test_settings),
+            domain_statuses={
+                "required_core": {"status": "ready", "blocking_failures": [], "warnings": []},
+                "optional_enrichment": {"status": "deferred_or_partial", "warnings": []},
+            },
             final_status="passed",
         ),
         dataset_manifest_path,
@@ -114,6 +135,11 @@ def test_bridge_verifier_fails_when_dataset_manifest_is_not_canonical_ready(
             datasets=[],
             run_id="dataset-build-1",
             canonical_export_ready=True,
+            reports=_required_report_paths(test_settings),
+            domain_statuses={
+                "required_core": {"status": "ready", "blocking_failures": [], "warnings": []},
+                "optional_enrichment": {"status": "deferred_or_partial", "warnings": []},
+            },
             final_status="passed",
         ),
         dataset_manifest_path,
@@ -171,6 +197,11 @@ def test_bridge_verifier_normalizes_relative_export_manifest_path(
             datasets=[],
             run_id="dataset-build-1",
             canonical_export_ready=True,
+            reports=_required_report_paths(test_settings),
+            domain_statuses={
+                "required_core": {"status": "ready", "blocking_failures": [], "warnings": []},
+                "optional_enrichment": {"status": "deferred_or_partial", "warnings": []},
+            },
             final_status="passed",
         ),
         dataset_manifest_path,

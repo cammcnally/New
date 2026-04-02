@@ -28,18 +28,43 @@ def test_report_inventory_tracks_known_report_paths(test_settings) -> None:
     assert reports["export_panel_manifest"] is None
 
 
-def test_final_pass_fail_summary_warns_for_quarantined_rows(test_settings) -> None:
+def test_final_pass_fail_summary_warns_for_quarantined_rows(
+    test_settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     qa_root = qa_dir(test_settings)
     qa_root.mkdir(parents=True, exist_ok=True)
     (qa_root / "unresolved_identity_prices_1d.json").write_text(
         json.dumps({"summary": {"unresolved_rows": 3}}),
         encoding="utf-8",
     )
+    monkeypatch.setattr(
+        run_all_module,
+        "_build_domain_statuses",
+        lambda **_: {
+            "required_core": {
+                "status": "ready_with_warnings",
+                "blocking_failures": [],
+                "warnings": ["quarantined_rows_present"],
+                "quarantined_rows": 3,
+                "coverage_error_count": 0,
+                "coverage_warning_count": 0,
+            },
+            "optional_enrichment": {
+                "status": "deferred_or_partial",
+                "warnings": ["macro_domain_deferred_or_missing"],
+                "macro_present": False,
+            },
+        },
+    )
 
     summary_path = run_all_module._write_final_pass_fail_summary(
         settings=test_settings,
         dataset_build_id="dataset-build-123",
         qa_results={"qa_prices": {"errors": [], "warnings": [], "stats": {}}},
+        silver_results={},
+        coverage_results=None,
+        reports={},
     )
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
 
@@ -48,13 +73,39 @@ def test_final_pass_fail_summary_warns_for_quarantined_rows(test_settings) -> No
     assert summary["canonical_export_ready"] is True
     assert summary["quarantined_rows"] == 3
     assert summary["qa_error_count"] == 0
+    assert summary["required_core_blocking_failures"] == []
 
 
-def test_final_pass_fail_summary_fails_when_qa_errors_exist(test_settings) -> None:
+def test_final_pass_fail_summary_fails_when_qa_errors_exist(
+    test_settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        run_all_module,
+        "_build_domain_statuses",
+        lambda **_: {
+            "required_core": {
+                "status": "blocking_failure",
+                "blocking_failures": ["qa_errors_present"],
+                "warnings": [],
+                "quarantined_rows": 0,
+                "coverage_error_count": 0,
+                "coverage_warning_count": 0,
+            },
+            "optional_enrichment": {
+                "status": "deferred_or_partial",
+                "warnings": [],
+                "macro_present": False,
+            },
+        },
+    )
     summary_path = run_all_module._write_final_pass_fail_summary(
         settings=test_settings,
         dataset_build_id="dataset-build-123",
         qa_results={"qa_prices": {"errors": ["bad"], "warnings": [], "stats": {}}},
+        silver_results={},
+        coverage_results=None,
+        reports={},
     )
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
 
