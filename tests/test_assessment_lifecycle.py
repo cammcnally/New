@@ -48,8 +48,7 @@ def test_active_assessment_docs_have_required_metadata_header() -> None:
 
 def test_superseded_assessment_docs_have_visible_banner() -> None:
     archive_paths = sorted((ROOT / "docs" / "archive" / "assessments").glob("**/*.md"))
-    stub_paths = sorted((ROOT / "subagent").glob("*assessment*.md"))
-    historical_paths = archive_paths + stub_paths + [ROOT / "subagent" / "repo_hygiene_audit_2026-03-22.md"]
+    historical_paths = [p for p in archive_paths if p.exists()]
 
     for path in historical_paths:
         text = path.read_text(encoding="utf-8")

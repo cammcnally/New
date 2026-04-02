@@ -37,3 +37,5 @@ no Python code parsed their contents at runtime. They have been moved to
 | `control_plane/phase1_contract.json` | Phase 1 artifact schema and validation rules | `tools/phase1_sanity_check.py` |
 | `control_plane/governance_registries.json` | Agent/tool/grader metadata for orchestrator prompts | `control_plane/policy_loader.py` (required at bootstrap) |
 | `control_plane/loader_manifest.json` | SHA256 integrity hashes for control-plane files | `control_plane/policy_loader.py` (`verify_loader_manifest`) |
+| `repo_control/file_registry.yaml` | Authoritative file vitality and cleanup registry | `tools/audit_file_registry.py`, `tools/report_cleanup_candidates.py`, `tools/verify_frozen_surfaces.py` (existence + non-empty registry) |
+| `docs/repo_cleanup_policy.md` | Human-readable explanation of cleanup classes and rules | `tools/verify_frozen_surfaces.py` (existence via frozen surfaces manifest) |

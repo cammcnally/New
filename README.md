@@ -137,7 +137,7 @@ Primary repo surfaces:
 
 - `mlflow_integration/`
 - `lineage/`
-- narrow `dvc.yaml` coverage for reproducibility-critical exports
+- narrow `dvc.yaml` tracking the compatibility export (`panel_ohlcv_clean.csv` + sidecar manifest) via `tools/run_repo_e2e.py --stop-after export_panel` (not broad `pipeline_outputs/*` snapshots)
 - `gx/` for top-level artifact validation where still useful
 
 ### Deferred But Planned

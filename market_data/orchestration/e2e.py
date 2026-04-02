@@ -48,6 +48,7 @@ GUARDS = [
     "bridge_guard",
     "verification_guard",
 ]
+_DOCS_SYNC_BASE_REF = "origin/main"
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -499,7 +500,7 @@ def run_e2e(
                     "dataset_build_id": dataset_manifest.get("dataset_build_id"),
                 }
             elif stage == "verify_market_data":
-                run_docs_sync_checks()
+                run_docs_sync_checks(base_ref=_DOCS_SYNC_BASE_REF)
                 _set_guard_result(guard_results, guard="docs_sync_guard", result="passed", notes="Pre-export docs sync passed.")
                 run_contract_checks(data_lake=str(settings.data_lake_root), config_dir=str(settings.configs_dir))
                 _set_guard_result(guard_results, guard="schema_guard", result="passed", notes="Canonical contracts passed pre-export.")
@@ -582,6 +583,7 @@ def run_e2e(
                         data_lake=str(settings.data_lake_root),
                         config_dir=str(settings.configs_dir),
                         panel_path=str(panel_path_obj),
+                        base_ref=_DOCS_SYNC_BASE_REF,
                     )
                     _set_guard_result(
                         guard_results,

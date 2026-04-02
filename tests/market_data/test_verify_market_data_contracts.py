@@ -8,6 +8,7 @@ import pytest
 
 from market_data.common.io_parquet import write_parquet
 from market_data.common.paths import silver_path
+from market_data.common.pandera_contracts import ContractValidationError
 from tools import verify_market_data_contracts as contracts_module
 
 pytestmark = pytest.mark.ingestion
@@ -206,3 +207,48 @@ def test_contract_verifier_passes_with_minimal_required_tables(
 
     out = capsys.readouterr().out
     assert "[contracts] checked=7" in out
+
+
+def _minimal_price_row(sid: str = "1", trade_d: date | None = None) -> pl.DataFrame:
+    d = trade_d or date(2024, 1, 2)
+    return pl.DataFrame(
+        {
+            "sid": [sid],
+            "trade_date": [d],
+            "open": [10.0],
+            "high": [11.0],
+            "low": [9.0],
+            "close": [10.5],
+            "volume": [1000.0],
+            "source_vendor": ["yfinance"],
+            "source_symbol": ["AAA"],
+            "loaded_at": [_utc(2024, 1, 3)],
+        }
+    ).with_columns(pl.col("loaded_at").cast(pl.Datetime("us", "UTC")))
+
+
+def test_validate_silver_prices_partitioned_incremental(
+    monkeypatch: pytest.MonkeyPatch,
+    test_settings,
+) -> None:
+    monkeypatch.setattr(contracts_module, "_INCREMENTAL_ROW_THRESHOLD", 0)
+    prices_dir = silver_path("prices_1d_unadjusted", test_settings)
+    prices_dir.mkdir(parents=True, exist_ok=True)
+    write_parquet(_minimal_price_row(trade_d=date(2023, 1, 3)), prices_dir / "y2023.parquet")
+    write_parquet(_minimal_price_row(trade_d=date(2024, 1, 4)), prices_dir / "y2024.parquet")
+    n = contracts_module.validate_silver_contract_dataset("prices_1d_unadjusted", prices_dir)
+    assert n == 2
+
+
+def test_validate_silver_prices_incremental_catches_cross_file_pk_dupes(
+    monkeypatch: pytest.MonkeyPatch,
+    test_settings,
+) -> None:
+    monkeypatch.setattr(contracts_module, "_INCREMENTAL_ROW_THRESHOLD", 0)
+    prices_dir = silver_path("prices_1d_unadjusted", test_settings)
+    prices_dir.mkdir(parents=True, exist_ok=True)
+    row = _minimal_price_row()
+    write_parquet(row, prices_dir / "a.parquet")
+    write_parquet(row, prices_dir / "b.parquet")
+    with pytest.raises(ContractValidationError, match="duplicate primary key"):
+        contracts_module.validate_silver_contract_dataset("prices_1d_unadjusted", prices_dir)

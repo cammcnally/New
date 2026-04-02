@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -11,18 +12,142 @@ from Pipeline import (
     MODEL_COMPARISON_REPORT_COLUMNS,
     PipelineConfig,
     apply_empirical_probability_map,
+    build_feature_set_version,
     build_feature_registry,
     build_feature_validation_report,
+    load_input_build_metadata,
+    require_input_build_metadata,
     build_model_comparison_report,
     compute_daily_return_diagnostics,
     feature_validation_for_fold,
     label_long_events,
     moving_block_bootstrap_white_reality_check,
+    run_pipeline_with_optional_lineage,
     summarize_stitched_policy_daily,
 )
 
 
 pytestmark = pytest.mark.helper
+
+
+def test_load_input_build_metadata_reads_export_manifest_sidecar(tmp_path: Path) -> None:
+    panel_path = tmp_path / "panel.csv"
+    panel_path.write_text("ticker,timestamp_utc,open,high,low,close,volume,is_incomplete_session\n")
+    manifest_path = Path(str(panel_path) + ".manifest.json")
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "dataset_build_id": "dataset-build-1",
+                "export_panel_version_id": "export-build-1",
+                "contract_name": "export_panel",
+                "content_hash": "abc123",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    metadata = load_input_build_metadata(panel_path)
+
+    assert metadata["dataset_build_id"] == "dataset-build-1"
+    assert metadata["export_panel_version_id"] == "export-build-1"
+    assert metadata["input_panel_manifest_path"] == str(manifest_path)
+    assert metadata["input_panel_manifest_present"] is True
+
+
+def test_require_input_build_metadata_rejects_missing_manifest(tmp_path: Path) -> None:
+    panel_path = tmp_path / "panel.csv"
+    panel_path.write_text("ticker,timestamp_utc,open,high,low,close,volume,is_incomplete_session\n")
+
+    metadata = load_input_build_metadata(panel_path)
+
+    with pytest.raises(RuntimeError, match="Input panel manifest is required"):
+        require_input_build_metadata(panel_path, metadata)
+
+
+def test_run_pipeline_with_optional_lineage_writes_summary_when_lineage_available(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import lineage
+    import lineage.facets as lineage_facets
+    import Pipeline as pipeline_module
+
+    panel_path = tmp_path / "panel.csv"
+    panel_path.write_text("ticker,timestamp_utc,open,high,low,close,volume,is_incomplete_session\n")
+    manifest_path = Path(str(panel_path) + ".manifest.json")
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "dataset_build_id": "dataset-build-1",
+                "export_panel_version_id": "export-build-1",
+                "contract_name": "export_panel",
+                "content_hash": "abc123",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(pipeline_module, "CANONICAL_BASE", tmp_path)
+
+    events: list[tuple[str, object]] = []
+
+    class _FakeEmitter:
+        def __init__(self, *, output_dir: str) -> None:
+            self.output_dir = output_dir
+
+        def emit_start(self, run_id: str, input_datasets: list[dict[str, object]], config_facet: dict[str, object] | None = None) -> None:
+            events.append(("start", {"run_id": run_id, "inputs": input_datasets, "config_facet": config_facet}))
+
+        def emit_complete(self, run_id: str, output_datasets: list[dict[str, object]]) -> None:
+            events.append(("complete", {"run_id": run_id, "outputs": output_datasets}))
+
+        def emit_fail(self, run_id: str, error_message: str) -> None:
+            events.append(("fail", {"run_id": run_id, "error_message": error_message}))
+
+    monkeypatch.setattr(lineage, "PipelineLineageEmitter", _FakeEmitter)
+    monkeypatch.setattr(lineage_facets, "dataset_schema_facet", lambda columns, types=None: {"schema": {"columns": columns, "types": types or {}}})
+    monkeypatch.setattr(lineage_facets, "pipeline_config_facet", lambda config_dict: {"config": config_dict})
+    monkeypatch.setattr(lineage_facets, "build_references_dataset_facet", lambda **kwargs: {"refs": kwargs})
+
+    def _fake_run_pipeline(config: PipelineConfig) -> dict[str, object]:
+        output_root = pipeline_module._resolve_project_path(config.output_dir, force_project_drive=True)
+        paths = pipeline_module.build_output_paths(output_root)
+        for artifact in (
+            paths.state_dir / "config_snapshot.json",
+            paths.state_dir / "verification.json",
+            paths.metrics_dir / "overall_metrics.json",
+            paths.strategies_dir / "best_strategy_summary.json",
+            paths.reports_dir / "final_report.md",
+        ):
+            artifact.parent.mkdir(parents=True, exist_ok=True)
+            if artifact.suffix == ".json":
+                artifact.write_text("{}", encoding="utf-8")
+            else:
+                artifact.write_text("# report\n", encoding="utf-8")
+        return {
+            "dataset_build_id": "dataset-build-1",
+            "export_panel_version_id": "export-build-1",
+        }
+
+    monkeypatch.setattr(pipeline_module, "run_pipeline", _fake_run_pipeline)
+
+    summary = run_pipeline_with_optional_lineage(
+        PipelineConfig(input_panel_csv="panel.csv", output_dir="outputs")
+    )
+
+    lineage_summary_path = tmp_path / "outputs" / "06_state" / "lineage_summary.json"
+    assert lineage_summary_path.exists()
+    lineage_summary = json.loads(lineage_summary_path.read_text(encoding="utf-8"))
+
+    assert summary["lineage_run_id"] == lineage_summary["lineage_run_id"]
+    assert summary["lineage_event_dir"] == lineage_summary["lineage_event_dir"]
+    assert lineage_summary["dataset_build_id"] == "dataset-build-1"
+    assert lineage_summary["export_panel_version_id"] == "export-build-1"
+    assert [event[0] for event in events] == ["start", "complete"]
+
+
+def test_build_feature_set_version_is_order_insensitive() -> None:
+    assert build_feature_set_version(["beta", "alpha"]) == build_feature_set_version(["alpha", "beta"])
 
 
 def test_compute_daily_return_diagnostics_uses_phase1_lag_rule() -> None:

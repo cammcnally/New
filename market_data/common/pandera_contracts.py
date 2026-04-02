@@ -10,8 +10,14 @@ import polars as pl
 from pandera.errors import SchemaError, SchemaErrors
 
 from market_data.common.schema_registry import (
+    ADJUSTMENT_FACTORS_SILVER_AV,
+    ADJUSTMENT_FACTORS_SILVER_AV_PK,
     BENCHMARK_DEFINITIONS,
     BENCHMARK_DEFINITIONS_PK,
+    BENCHMARK_PRICES_DAILY_SILVER,
+    BENCHMARK_PRICES_DAILY_SILVER_PK,
+    CORPORATE_ACTIONS_SILVER_AV,
+    CORPORATE_ACTIONS_SILVER_AV_PK,
     INSTRUMENT_BENCHMARK_MAP,
     INSTRUMENT_BENCHMARK_MAP_PK,
     INSTRUMENT_CLASSIFICATION_HISTORY,
@@ -48,6 +54,8 @@ BENCHMARK_TYPE_VALUES = frozenset(
     }
 )
 CANONICAL_OR_PROXY_VALUES = frozenset({"canonical", "proxy"})
+CORPORATE_ACTION_TYPE_VALUES = frozenset({"split", "dividend"})
+
 MAPPING_TYPE_VALUES = frozenset(
     {
         "default_market_benchmark",
@@ -177,6 +185,36 @@ def _ensure_release_not_after_available(df: pl.DataFrame, table_name: str) -> No
     if len(bad) > 0:
         raise ContractValidationError(
             f"[{table_name}] release timestamp occurs after availability: {len(bad)} rows"
+        )
+
+
+def _ensure_corporate_actions_silver_splits(df: pl.DataFrame, table_name: str) -> None:
+    splits = df.filter(pl.col("action_type") == "split")
+    bad = splits.filter(
+        pl.col("split_coefficient").is_null() | (pl.col("split_coefficient") <= 0)
+    )
+    if len(bad) > 0:
+        raise ContractValidationError(
+            f"[{table_name}] split rows must have positive split_coefficient: {len(bad)} rows"
+        )
+
+
+def _ensure_corporate_actions_silver_dividends(df: pl.DataFrame, table_name: str) -> None:
+    divs = df.filter(pl.col("action_type") == "dividend")
+    bad = divs.filter(pl.col("cash_amount").is_not_null() & (pl.col("cash_amount") < 0))
+    if len(bad) > 0:
+        raise ContractValidationError(
+            f"[{table_name}] dividend rows must not have negative cash_amount: {len(bad)} rows"
+        )
+
+
+def _ensure_adjustment_factors_silver_cumulative_positive(df: pl.DataFrame, table_name: str) -> None:
+    bad = df.filter(
+        (pl.col("cum_split_factor") <= 0) | (pl.col("cum_total_return_factor") <= 0)
+    )
+    if len(bad) > 0:
+        raise ContractValidationError(
+            f"[{table_name}] cumulative factors must be positive: {len(bad)} rows"
         )
 
 
@@ -322,6 +360,22 @@ EXPORT_PANEL_SCHEMA = pa.DataFrameSchema(
     }
 )
 
+BENCHMARK_PRICES_DAILY_SILVER_SCHEMA = pa.DataFrameSchema(
+    _required_columns(BENCHMARK_PRICES_DAILY_SILVER),
+)
+
+CORPORATE_ACTIONS_SILVER_AV_SCHEMA = pa.DataFrameSchema(
+    _required_columns(
+        CORPORATE_ACTIONS_SILVER_AV,
+        nullable={"record_date", "payment_date", "declared_date"},
+        enum_checks={"action_type": CORPORATE_ACTION_TYPE_VALUES},
+    ),
+)
+
+ADJUSTMENT_FACTORS_SILVER_AV_SCHEMA = pa.DataFrameSchema(
+    _required_columns(ADJUSTMENT_FACTORS_SILVER_AV),
+)
+
 
 CONTRACTS: dict[str, TableContract] = {
     "instrument_master": TableContract(
@@ -437,6 +491,41 @@ CONTRACTS: dict[str, TableContract] = {
         ),
         status="compatibility_only",
     ),
+    "benchmark_prices_daily": TableContract(
+        name="benchmark_prices_daily",
+        schema=BENCHMARK_PRICES_DAILY_SILVER_SCHEMA,
+        validators=(
+            lambda df, table_name: _ensure_pk_unique(
+                df, table_name, list(BENCHMARK_PRICES_DAILY_SILVER_PK)
+            ),
+            _ensure_ohlc_sane,
+            _ensure_non_negative_volume,
+        ),
+        status="contract_defined_deferred",
+    ),
+    "corporate_actions": TableContract(
+        name="corporate_actions",
+        schema=CORPORATE_ACTIONS_SILVER_AV_SCHEMA,
+        validators=(
+            lambda df, table_name: _ensure_pk_unique(
+                df, table_name, list(CORPORATE_ACTIONS_SILVER_AV_PK)
+            ),
+            _ensure_corporate_actions_silver_splits,
+            _ensure_corporate_actions_silver_dividends,
+        ),
+        status="contract_defined_deferred",
+    ),
+    "adjustment_factors": TableContract(
+        name="adjustment_factors",
+        schema=ADJUSTMENT_FACTORS_SILVER_AV_SCHEMA,
+        validators=(
+            lambda df, table_name: _ensure_pk_unique(
+                df, table_name, list(ADJUSTMENT_FACTORS_SILVER_AV_PK)
+            ),
+            _ensure_adjustment_factors_silver_cumulative_positive,
+        ),
+        status="contract_defined_deferred",
+    ),
 }
 
 
@@ -464,3 +553,80 @@ def contract_status(table_name: str) -> str:
     if contract is None:
         raise KeyError(f"Unknown market-data contract: {table_name}")
     return contract.status
+
+
+# Validators safe to run on each parquet partition/file independently (no cross-file PK/window).
+_PARTITION_LOCAL_VALIDATORS: dict[str, tuple[Callable[[pl.DataFrame, str], None], ...]] = {
+    "prices_1d_unadjusted": (_ensure_ohlc_sane, _ensure_non_negative_volume),
+    "macro_observations_vintage": (_ensure_release_not_after_available,),
+    "macro_asof_daily": (_ensure_asof_not_future_available,),
+    "trading_calendar": (_ensure_trading_calendar_sessions,),
+}
+
+_TABLE_PK_COLUMNS: dict[str, list[str]] = {
+    "instrument_master": list(INSTRUMENT_MASTER_PK),
+    "instrument_symbol_history": list(INSTRUMENT_SYMBOL_HISTORY_PK),
+    "prices_1d_unadjusted": list(PRICES_1D_UNADJUSTED_PK),
+    "macro_observations_vintage": list(MACRO_OBSERVATIONS_VINTAGE_PK),
+    "macro_asof_daily": list(MACRO_ASOF_DAILY_PK),
+    "instrument_classification_history": list(INSTRUMENT_CLASSIFICATION_HISTORY_PK),
+    "instrument_benchmark_map": list(INSTRUMENT_BENCHMARK_MAP_PK),
+    "benchmark_definitions": list(BENCHMARK_DEFINITIONS_PK),
+    "trading_calendar": list(TRADING_CALENDAR_PK),
+}
+
+
+def validate_contract_schema_only(table_name: str, df: pl.DataFrame) -> pl.DataFrame:
+    """Pandera schema only (no custom validators)."""
+    contract = CONTRACTS.get(table_name)
+    if contract is None:
+        raise KeyError(f"Unknown market-data contract: {table_name}")
+    try:
+        validated = contract.schema.validate(df, lazy=True)
+    except (SchemaError, SchemaErrors) as exc:
+        raise ContractValidationError(f"[{table_name}] pandera validation failed: {exc}") from exc
+    if isinstance(validated, pl.LazyFrame):
+        validated = validated.collect()
+    return validated
+
+
+def validate_contract_partition_local(table_name: str, df: pl.DataFrame) -> None:
+    """Schema plus validators that do not require cross-partition context."""
+    validated = validate_contract_schema_only(table_name, df)
+    for fn in _PARTITION_LOCAL_VALIDATORS.get(table_name, ()):
+        fn(validated, table_name)
+
+
+def assert_lazy_primary_key_unique(lf: pl.LazyFrame, table_name: str, pk_cols: list[str]) -> None:
+    """Fail when duplicate PK rows exist (streaming-friendly; projects PK columns only)."""
+    total = lf.select(pl.len()).collect().item()
+    uniq = lf.unique(subset=pk_cols, keep="first").select(pl.len()).collect().item()
+    dupes = total - uniq
+    if dupes > 0:
+        raise ContractValidationError(f"[{table_name}] duplicate primary key rows: {dupes}")
+
+
+def validate_non_overlapping_windows(
+    table_name: str,
+    df: pl.DataFrame,
+    *,
+    group_cols: list[str],
+    start_col: str,
+    end_col: str,
+) -> None:
+    """Run the canonical effective-window overlap check on a narrowed dataframe."""
+    _ensure_non_overlapping_windows(
+        df, table_name, group_cols=group_cols, start_col=start_col, end_col=end_col
+    )
+
+
+def validate_benchmark_definition_roles(df: pl.DataFrame) -> None:
+    """Run ^VIX / VIXY role checks (expects a full benchmark_definitions frame)."""
+    _ensure_benchmark_roles(df, "benchmark_definitions")
+
+
+def table_primary_key_columns(table_name: str) -> list[str]:
+    cols = _TABLE_PK_COLUMNS.get(table_name)
+    if cols is None:
+        raise KeyError(f"Unknown market-data contract: {table_name}")
+    return cols

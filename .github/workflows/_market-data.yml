@@ -1,0 +1,18 @@
+name: Canonical Market-Data Verification
+
+on:
+  workflow_call:
+
+jobs:
+  verify-market-data:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+      - run: uv sync --group dev --group control-plane --group ingestion --group ingestion-test
+      - name: market_data_verification_bundle
+        run: uv run python tools/verify_market_data.py --base-ref origin/main

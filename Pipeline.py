@@ -12,6 +12,7 @@ from statistics import NormalDist
 import sys
 import tempfile
 import time
+import uuid
 import warnings
 from collections import defaultdict
 from dataclasses import asdict, dataclass, field
@@ -1884,6 +1885,289 @@ def build_code_fingerprint() -> str:
 
 def build_input_data_hash(path: Path) -> str:
     return file_sha256(path)
+
+
+def load_input_build_metadata(path: Path) -> Dict[str, Any]:
+    manifest_path = Path(str(path) + ".manifest.json")
+    metadata: Dict[str, Any] = {
+        "input_panel_manifest_path": str(manifest_path) if manifest_path.exists() else None,
+        "input_panel_manifest_present": manifest_path.exists(),
+        "input_panel_manifest_version": None,
+        "input_panel_contract_name": None,
+        "input_panel_content_hash": None,
+        "dataset_build_id": None,
+        "export_panel_version_id": None,
+    }
+    if not manifest_path.exists():
+        return metadata
+    try:
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except Exception:
+        return metadata
+    metadata.update(
+        {
+            "input_panel_manifest_version": payload.get("manifest_version"),
+            "input_panel_contract_name": payload.get("contract_name"),
+            "input_panel_content_hash": payload.get("content_hash"),
+            "dataset_build_id": payload.get("dataset_build_id"),
+            "export_panel_version_id": payload.get("export_panel_version_id"),
+        }
+    )
+    return metadata
+
+
+def require_input_build_metadata(path: Path, metadata: Mapping[str, Any]) -> None:
+    if not metadata.get("input_panel_manifest_present"):
+        raise RuntimeError(
+            f"Input panel manifest is required for {path}. "
+            "Use the canonical export bridge so the panel carries dataset_build_id and export_panel_version_id."
+        )
+    missing = [
+        field
+        for field in ("dataset_build_id", "export_panel_version_id")
+        if not metadata.get(field)
+    ]
+    if missing:
+        raise RuntimeError(
+            f"Input panel manifest for {path} is missing required build references: {missing}"
+        )
+
+
+def build_feature_set_version(features: Sequence[str]) -> str:
+    normalized = "|".join(sorted({str(feature) for feature in features}))
+    digest = hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:16]
+    return f"feature_set::{digest}"
+
+
+def maybe_log_mlflow_summary(
+    *,
+    config: PipelineConfig,
+    input_path: Path,
+    paths: OutputPaths,
+    config_snapshot_payload: Mapping[str, Any],
+    overall_metrics: Mapping[str, Any],
+    fold_metrics_df: pd.DataFrame,
+) -> None:
+    try:
+        from mlflow_integration.tracking import (
+            log_aggregate_metrics,
+            log_artifact_path,
+            log_dataset,
+            log_fold_metrics,
+            pipeline_run_context,
+        )
+    except Exception as exc:  # pragma: no cover - optional dependency surface
+        logging.info("MLflow tracking unavailable: %s", exc)
+        return
+
+    extra_tags = {
+        "dataset_build_id": config_snapshot_payload.get("dataset_build_id"),
+        "export_panel_version_id": config_snapshot_payload.get("export_panel_version_id"),
+        "feature_set_version": config_snapshot_payload.get("feature_set_version"),
+        "input_panel_manifest_present": config_snapshot_payload.get("input_panel_manifest_present"),
+    }
+    extra_params = {
+        "dataset_build_id": config_snapshot_payload.get("dataset_build_id"),
+        "export_panel_version_id": config_snapshot_payload.get("export_panel_version_id"),
+        "feature_set_version": config_snapshot_payload.get("feature_set_version"),
+        "input_panel_manifest_present": config_snapshot_payload.get("input_panel_manifest_present"),
+        "input_panel_manifest_path": config_snapshot_payload.get("input_panel_manifest_path"),
+        "input_panel_manifest_version": config_snapshot_payload.get("input_panel_manifest_version"),
+        "input_panel_contract_name": config_snapshot_payload.get("input_panel_contract_name"),
+        "effective_cost_model": config_snapshot_payload.get("effective_cost_model"),
+        "verification_artifact_path": str(paths.state_dir / "verification.json"),
+        "config_snapshot_path": str(paths.state_dir / "config_snapshot.json"),
+        "overall_metrics_path": str(paths.metrics_dir / "overall_metrics.json"),
+        "selected_model_artifact_path": str(paths.strategies_dir / "best_strategy_summary.json"),
+        "audit_plot_path": str(paths.reports_dir / "equity_curve_best_concurrency.png"),
+        "report_path": str(paths.reports_dir / "final_report.md"),
+    }
+
+    panel_digest = config_snapshot_payload.get("input_panel_content_hash") or config_snapshot_payload.get(
+        "input_data_hash"
+    )
+    manifest_path = config_snapshot_payload.get("input_panel_manifest_path")
+
+    with pipeline_run_context(config, extra_tags=extra_tags, extra_params=extra_params):
+        log_dataset("input_panel_csv", str(input_path), digest=str(panel_digest) if panel_digest else None)
+        if manifest_path:
+            log_dataset("input_panel_manifest", str(manifest_path))
+        for _, row in fold_metrics_df.iterrows():
+            fold_name = str(row.get("fold", "unknown_fold"))
+            log_fold_metrics(fold_name, row.to_dict())
+        log_aggregate_metrics(dict(overall_metrics))
+        for artifact_path in (
+            paths.state_dir / "verification.json",
+            paths.state_dir / "config_snapshot.json",
+            paths.metrics_dir / "overall_metrics.json",
+            paths.strategies_dir / "best_strategy_summary.json",
+            paths.reports_dir / "final_report.md",
+            paths.reports_dir / "equity_curve_best_concurrency.png",
+        ):
+            log_artifact_path(str(artifact_path))
+
+
+def run_pipeline_with_optional_lineage(config: PipelineConfig) -> Dict[str, object]:
+    output_dir = _resolve_project_path(config.output_dir, force_project_drive=True)
+    input_path = _resolve_project_path(config.input_panel_csv)
+    paths = build_output_paths(output_dir)
+    input_build_metadata = load_input_build_metadata(input_path)
+
+    try:
+        from lineage import PipelineLineageEmitter
+        from lineage.facets import (
+            build_references_dataset_facet,
+            dataset_schema_facet,
+            pipeline_config_facet,
+        )
+    except Exception as exc:  # pragma: no cover - optional dependency surface
+        logging.info("OpenLineage unavailable: %s", exc)
+        return run_pipeline(config)
+
+    try:
+        emitter = PipelineLineageEmitter(output_dir=str(paths.state_dir / "lineage_events"))
+    except Exception as exc:  # pragma: no cover - optional dependency surface
+        logging.info("OpenLineage emitter unavailable: %s", exc)
+        return run_pipeline(config)
+
+    lineage_run_id = str(uuid.uuid4())
+    emitter_instance: Any | None = emitter
+    try:
+        input_datasets: List[Dict[str, Any]] = [
+            {
+                "namespace": "file",
+                "name": str(input_path),
+                "facets": {
+                    **dataset_schema_facet(
+                        [
+                            "ticker",
+                            "timestamp_utc",
+                            "open",
+                            "high",
+                            "low",
+                            "close",
+                            "volume",
+                            "is_incomplete_session",
+                        ],
+                        {
+                            "ticker": "string",
+                            "timestamp_utc": "datetime",
+                            "open": "float64",
+                            "high": "float64",
+                            "low": "float64",
+                            "close": "float64",
+                            "volume": "float64",
+                            "is_incomplete_session": "boolean",
+                        },
+                    ),
+                    **build_references_dataset_facet(
+                        dataset_build_id=cast(Optional[str], input_build_metadata.get("dataset_build_id")),
+                        export_panel_version_id=cast(
+                            Optional[str], input_build_metadata.get("export_panel_version_id")
+                        ),
+                        content_hash=cast(Optional[str], input_build_metadata.get("input_panel_content_hash")),
+                        contract_name=cast(Optional[str], input_build_metadata.get("input_panel_contract_name")),
+                        manifest_path=cast(Optional[str], input_build_metadata.get("input_panel_manifest_path")),
+                        output_path=str(input_path),
+                    ),
+                },
+            }
+        ]
+        manifest_path = input_build_metadata.get("input_panel_manifest_path")
+        if manifest_path:
+            input_datasets.append(
+                {
+                    "namespace": "file",
+                    "name": str(manifest_path),
+                    "facets": build_references_dataset_facet(
+                        dataset_build_id=cast(Optional[str], input_build_metadata.get("dataset_build_id")),
+                        export_panel_version_id=cast(
+                            Optional[str], input_build_metadata.get("export_panel_version_id")
+                        ),
+                        content_hash=cast(Optional[str], input_build_metadata.get("input_panel_content_hash")),
+                        contract_name=cast(Optional[str], input_build_metadata.get("input_panel_contract_name")),
+                        manifest_path=str(manifest_path),
+                        output_path=str(input_path),
+                    ),
+                }
+            )
+        emitter_instance.emit_start(
+            lineage_run_id,
+            input_datasets,
+            config_facet=pipeline_config_facet(
+                {
+                    "schema_version": SCHEMA_VERSION,
+                    "robustness_method_version": ROBUSTNESS_METHOD_VERSION,
+                    "search_family_definition_version": SEARCH_FAMILY_DEFINITION_VERSION,
+                    "threshold_search_corrected": THRESHOLD_SEARCH_CORRECTED,
+                    "full_pipeline_corrected": FULL_PIPELINE_CORRECTED,
+                    "trial_scope_formal": TRIAL_SCOPE_FORMAL,
+                    "input_panel_csv": str(input_path),
+                    "output_dir": str(output_dir),
+                    "dataset_build_id": input_build_metadata.get("dataset_build_id"),
+                    "export_panel_version_id": input_build_metadata.get("export_panel_version_id"),
+                }
+            ),
+        )
+    except Exception as exc:  # pragma: no cover - optional dependency surface
+        logging.info("OpenLineage start emission failed: %s", exc)
+        emitter_instance = None
+
+    try:
+        summary = run_pipeline(config)
+    except Exception as exc:
+        if emitter_instance is not None:
+            try:
+                emitter_instance.emit_fail(lineage_run_id, str(exc))
+            except Exception as emit_exc:  # pragma: no cover - optional dependency surface
+                logging.info("OpenLineage fail emission failed: %s", emit_exc)
+        raise
+
+    if emitter_instance is not None:
+        dataset_build_id = cast(Optional[str], summary.get("dataset_build_id")) or cast(
+            Optional[str], input_build_metadata.get("dataset_build_id")
+        )
+        export_panel_version_id = cast(Optional[str], summary.get("export_panel_version_id")) or cast(
+            Optional[str], input_build_metadata.get("export_panel_version_id")
+        )
+        output_specs: List[tuple[Path, str | None]] = [
+            (paths.state_dir / "config_snapshot.json", None),
+            (paths.state_dir / "verification.json", None),
+            (paths.metrics_dir / "overall_metrics.json", None),
+            (paths.strategies_dir / "best_strategy_summary.json", None),
+            (paths.reports_dir / "final_report.md", None),
+        ]
+        output_datasets = [
+            {
+                "namespace": "file",
+                "name": str(path),
+                "facets": build_references_dataset_facet(
+                    dataset_build_id=dataset_build_id,
+                    export_panel_version_id=export_panel_version_id,
+                    manifest_path=manifest_path,
+                    output_path=str(path),
+                ),
+            }
+            for path, _ in output_specs
+            if path.exists()
+        ]
+        try:
+            emitter_instance.emit_complete(lineage_run_id, output_datasets)
+        except Exception as exc:  # pragma: no cover - optional dependency surface
+            logging.info("OpenLineage complete emission failed: %s", exc)
+        atomic_write_json(
+            paths.state_dir / "lineage_summary.json",
+            {
+                "lineage_run_id": lineage_run_id,
+                "lineage_event_dir": str(paths.state_dir / "lineage_events"),
+                "dataset_build_id": dataset_build_id,
+                "export_panel_version_id": export_panel_version_id,
+                "input_panel_manifest_path": manifest_path,
+            },
+        )
+        summary["lineage_run_id"] = lineage_run_id
+        summary["lineage_event_dir"] = str(paths.state_dir / "lineage_events")
+    return summary
 
 
 def build_config_hash(config: PipelineConfig) -> str:
@@ -5428,6 +5712,8 @@ def run_pipeline(config: PipelineConfig) -> Dict[str, object]:
         raise RuntimeError(f"Invalid cost model schema; missing required fields: {missing_cost_fields}")
     code_fingerprint = build_code_fingerprint()
     input_data_hash = build_input_data_hash(input_path)
+    input_build_metadata = load_input_build_metadata(input_path)
+    require_input_build_metadata(input_path, input_build_metadata)
     config_hash = build_config_hash(config)
     config_snapshot_payload: Dict[str, Any] = {
         **asdict(config),
@@ -5444,6 +5730,7 @@ def run_pipeline(config: PipelineConfig) -> Dict[str, object]:
         "input_data_hash": input_data_hash,
         "config_hash": config_hash,
         "effective_cost_model": cost_model_snapshot,
+        **input_build_metadata,
     }
     atomic_write_json(paths.state_dir / "config_snapshot.json", config_snapshot_payload)
     if config.use_optuna_tuning and config.require_baseline_pass_for_tuning:
@@ -5478,6 +5765,7 @@ def run_pipeline(config: PipelineConfig) -> Dict[str, object]:
         "code_fingerprint": code_fingerprint,
         "input_data_hash": input_data_hash,
         "config_hash": config_hash,
+        **input_build_metadata,
     }
     all_trades: List[pd.DataFrame] = []
     all_equity: List[pd.DataFrame] = []
@@ -5580,6 +5868,8 @@ def run_pipeline(config: PipelineConfig) -> Dict[str, object]:
         # Build and persist a canonical feature registry for the implemented feature set.
         features_dir = paths.features_dir
         feature_registry_df = build_feature_registry(features)
+        config_snapshot_payload["feature_set_version"] = build_feature_set_version(features)
+        verification["feature_set_version"] = config_snapshot_payload["feature_set_version"]
         registry_path = features_dir / "feature_registry.csv"
         coverage_path = features_dir / "feature_registry_coverage_summary.csv"
         atomic_write_csv(feature_registry_df, registry_path)
@@ -6393,9 +6683,15 @@ def run_pipeline(config: PipelineConfig) -> Dict[str, object]:
     overall_metrics["full_pipeline_corrected"] = FULL_PIPELINE_CORRECTED
     overall_metrics["trial_scope_formal"] = TRIAL_SCOPE_FORMAL
     overall_metrics["trial_count_formal"] = int(threshold_policy_trial_count(config))
+    if "feature_set_version" not in config_snapshot_payload and features:
+        config_snapshot_payload["feature_set_version"] = build_feature_set_version(features)
+        verification["feature_set_version"] = config_snapshot_payload["feature_set_version"]
     overall_metrics["schema_version"] = SCHEMA_VERSION
     overall_metrics["robustness_method_version"] = ROBUSTNESS_METHOD_VERSION
     overall_metrics["search_family_definition_version"] = SEARCH_FAMILY_DEFINITION_VERSION
+    overall_metrics["dataset_build_id"] = config_snapshot_payload.get("dataset_build_id")
+    overall_metrics["export_panel_version_id"] = config_snapshot_payload.get("export_panel_version_id")
+    overall_metrics["feature_set_version"] = config_snapshot_payload.get("feature_set_version")
     overall_metrics["implementation_status"] = (
         config.implementation_status if config.implementation_status in IMPLEMENTATION_STATUS_VALUES else "present"
     )
@@ -7018,6 +7314,10 @@ def run_pipeline(config: PipelineConfig) -> Dict[str, object]:
             "note": "No strategies generated.",
         }
     )
+    if isinstance(best_strategy_summary, dict):
+        best_strategy_summary.setdefault("dataset_build_id", config_snapshot_payload.get("dataset_build_id"))
+        best_strategy_summary.setdefault("export_panel_version_id", config_snapshot_payload.get("export_panel_version_id"))
+        best_strategy_summary.setdefault("feature_set_version", config_snapshot_payload.get("feature_set_version"))
     atomic_write_json(paths.strategies_dir / "best_strategy_summary.json", best_strategy_summary)
 
     plot_source = (
@@ -7036,12 +7336,23 @@ def run_pipeline(config: PipelineConfig) -> Dict[str, object]:
         overall_metrics,
         ranked_feature_table if len(ranked_feature_table) else feature_stability,
     )
+    maybe_log_mlflow_summary(
+        config=config,
+        input_path=input_path,
+        paths=paths,
+        config_snapshot_payload=config_snapshot_payload,
+        overall_metrics=overall_metrics,
+        fold_metrics_df=fold_metrics_df,
+    )
     summary = {
         "verification": verification,
         "best_concurrency": best_concurrent,
         "overall_metrics": overall_metrics,
         "model_ready_rows": int(len(model_df)),
         "features_used": list(features),
+        "dataset_build_id": config_snapshot_payload.get("dataset_build_id"),
+        "export_panel_version_id": config_snapshot_payload.get("export_panel_version_id"),
+        "feature_set_version": config_snapshot_payload.get("feature_set_version"),
         "report_markdown": str(report_md),
         "output_dir": str(output_dir),
     }
@@ -7149,7 +7460,7 @@ def main() -> None:
         implementation_status=str(getattr(args, "implementation_status", "present")),
         verification_stage_reached=str(getattr(args, "verification_stage_reached", "code_present")),
     )
-    run_pipeline(config)
+    run_pipeline_with_optional_lineage(config)
 
 
 if __name__ == "__main__":

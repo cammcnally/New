@@ -1,30 +1,25 @@
+# Narrow reproducibility spine: compatibility export + sidecar manifest.
+# Full lake outputs live under data_lake/ (gitignored) and are not tracked here.
+# Materialize with: uv run python tools/run_repo_e2e.py --stop-after export_panel
 stages:
-  train:
-    cmd: uv run python Pipeline.py --input_panel_csv panel_ohlcv_clean.csv --output_dir pipeline_outputs
+  market_data_e2e_export:
+    cmd: uv run python tools/run_repo_e2e.py --stop-after export_panel
     deps:
+      - tools/run_repo_e2e.py
+      - market_data/orchestration/e2e.py
+      - market_data/orchestration/run_all.py
+      - market_data/orchestration/sync.py
+      - market_data/bridge/export_pipeline_panel.py
+      - tools/verify_market_data.py
+      - tools/verify_market_data_contracts.py
+      - tools/verify_market_data_bridge.py
+      - tools/verify_market_data_pit.py
+      - tools/verify_market_data_docs_sync.py
+      - tools/verify_market_data_common.py
       - Pipeline.py
-      - panel_ohlcv_clean.csv
+      - configs/
     outs:
-      - pipeline_outputs/01_data/:
+      - panel_ohlcv_clean.csv:
           cache: true
-      - pipeline_outputs/02_metrics/:
+      - panel_ohlcv_clean.csv.manifest.json:
           cache: true
-      - pipeline_outputs/03_features/:
-          cache: true
-      - pipeline_outputs/04_strategies/:
-          cache: true
-      - pipeline_outputs/05_reports/:
-          cache: true
-      - pipeline_outputs/06_state/:
-          cache: true
-    metrics:
-      - pipeline_outputs/02_metrics/fold_metrics.csv:
-          cache: false
-
-  evaluate:
-    cmd: uv run python tools/phase1_sanity_check.py --output_dir pipeline_outputs
-    deps:
-      - tools/phase1_sanity_check.py
-      - pipeline_outputs/02_metrics/
-      - pipeline_outputs/03_features/
-      - pipeline_outputs/04_strategies/

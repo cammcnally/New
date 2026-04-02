@@ -373,3 +373,61 @@ def test_instrument_benchmark_map_contract_rejects_overlapping_windows() -> None
 def test_deferred_contracts_are_registered() -> None:
     assert "instrument_classification_history" in CONTRACT_DEFINED_DEFERRED
     assert "instrument_benchmark_map" in CONTRACT_DEFINED_DEFERRED
+
+
+def test_benchmark_prices_daily_silver_contract_accepts_valid_frame() -> None:
+    df = pl.DataFrame(
+        {
+            "sid": ["1"],
+            "trade_date": [date(2024, 1, 2)],
+            "open": [10.0],
+            "high": [11.0],
+            "low": [9.0],
+            "close": [10.5],
+            "volume": [1000.0],
+            "source_vendor": ["yfinance"],
+            "loaded_at": [_utc(2024, 1, 3)],
+        }
+    ).with_columns(pl.col("loaded_at").cast(pl.Datetime("us", "UTC")))
+    out = validate_contract_df("benchmark_prices_daily", df)
+    assert out.height == 1
+
+
+def test_corporate_actions_silver_contract_accepts_valid_rows() -> None:
+    df = pl.DataFrame(
+        {
+            "sid": ["S1", "S1"],
+            "action_type": ["split", "dividend"],
+            "ex_date": [date(2024, 1, 2), date(2024, 2, 1)],
+            "cash_amount": [0.0, 0.5],
+            "split_coefficient": [2.0, 1.0],
+            "record_date": [None, None],
+            "payment_date": [None, None],
+            "declared_date": [None, None],
+            "source_vendor": ["alphavantage", "alphavantage"],
+            "loaded_at": [_utc(2024, 1, 3), _utc(2024, 2, 2)],
+        }
+    ).with_columns(
+        pl.col("record_date").cast(pl.Date),
+        pl.col("payment_date").cast(pl.Date),
+        pl.col("declared_date").cast(pl.Date),
+        pl.col("loaded_at").cast(pl.Datetime("us", "UTC")),
+    )
+    out = validate_contract_df("corporate_actions", df)
+    assert out.height == 2
+
+
+def test_adjustment_factors_silver_contract_accepts_valid_rows() -> None:
+    df = pl.DataFrame(
+        {
+            "sid": ["S1"],
+            "effective_date": [date(2024, 1, 2)],
+            "split_factor": [0.5],
+            "dividend_factor": [1.0],
+            "cum_split_factor": [1.0],
+            "cum_total_return_factor": [1.0],
+            "loaded_at": [_utc(2024, 1, 3)],
+        }
+    ).with_columns(pl.col("loaded_at").cast(pl.Datetime("us", "UTC")))
+    out = validate_contract_df("adjustment_factors", df)
+    assert out.height == 1

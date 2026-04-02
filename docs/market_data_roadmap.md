@@ -27,7 +27,7 @@ This document tracks visible follow-on work that is intentionally de-prioritized
 
 ### After That
 
-- narrow DVC coverage for exported datasets, manifests, and verification artifacts
+- narrow DVC coverage: `dvc.yaml` tracks `panel_ohlcv_clean.csv` + manifest only (via e2e stop-after export); lake manifests stay under gitignored `data_lake/`
 - additional export reproducibility checks
 
 ## Deferred Items And Revisit Conditions

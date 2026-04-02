@@ -13,7 +13,6 @@ if str(_ROOT) not in sys.path:
 
 from market_data.common.hashing import hash_file
 from market_data.common.manifest import current_dataset_build_id, dataset_manifest_path, read_manifest, stable_content_id
-from market_data.common.pandera_contracts import validate_contract_df
 
 try:
     from tools.verify_market_data_common import add_market_data_args, load_verification_settings
@@ -21,27 +20,73 @@ except ModuleNotFoundError:  # pragma: no cover - direct script execution
     from verify_market_data_common import add_market_data_args, load_verification_settings
 
 
-def _load_panel(path: Path) -> pl.DataFrame:
-    df = pl.read_csv(path, try_parse_dates=True)
-    incomplete_expr = (
-        pl.col("is_incomplete_session")
-        if df.schema.get("is_incomplete_session") == pl.Boolean
-        else (
-            pl.col("is_incomplete_session")
-            .cast(pl.Utf8)
-            .str.to_lowercase()
-            .is_in(["true", "1", "yes"])
-        )
+def _incomplete_session_expr() -> pl.Expr:
+    c = pl.col("is_incomplete_session")
+    return (
+        pl.when(c.cast(pl.Utf8, strict=False).str.to_lowercase().is_in(["true", "1", "yes"]))
+        .then(pl.lit(True))
+        .when(c.cast(pl.Utf8, strict=False).str.to_lowercase().is_in(["false", "0", "no"]))
+        .then(pl.lit(False))
+        .otherwise(c.cast(pl.Boolean, strict=False))
     )
-    return df.with_columns(
+
+
+def _scan_normalized_export_panel(path: Path) -> pl.LazyFrame:
+    """Lazy scan of the export CSV with the same column semantics as the legacy eager loader."""
+    lf = pl.scan_csv(path, try_parse_dates=True, infer_schema_length=50_000)
+    return lf.with_columns(
         pl.col("timestamp_utc").cast(pl.Datetime("us", "UTC")),
-        incomplete_expr.alias("is_incomplete_session"),
+        _incomplete_session_expr().alias("is_incomplete_session"),
         pl.col("open").cast(pl.Float64),
         pl.col("high").cast(pl.Float64),
         pl.col("low").cast(pl.Float64),
         pl.col("close").cast(pl.Float64),
         pl.col("volume").cast(pl.Float64),
     )
+
+
+def _lazy_export_panel_contract_checks(lf: pl.LazyFrame) -> None:
+    """Mirror ``export_panel`` Pandera + custom checks without materializing the full panel."""
+    nulls = lf.null_count().collect()
+    for col in (
+        "ticker",
+        "timestamp_utc",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
+        "is_incomplete_session",
+    ):
+        if col not in nulls.columns:
+            raise SystemExit(f"[bridge] export panel missing column: {col}")
+        if nulls[col][0] > 0:
+            raise SystemExit(f"[bridge] export panel null values in column: {col}")
+
+    dupes = (
+        lf.group_by(["ticker", "timestamp_utc"])
+        .len()
+        .filter(pl.col("len") > 1)
+        .select(pl.len())
+        .collect()
+        .item()
+    )
+    if dupes > 0:
+        raise SystemExit("[bridge] export panel duplicate (ticker, timestamp_utc) keys")
+
+    bad_ohlc = lf.filter(
+        (pl.col("low") > pl.col("open"))
+        | (pl.col("low") > pl.col("close"))
+        | (pl.col("low") > pl.col("high"))
+        | (pl.col("high") < pl.col("open"))
+        | (pl.col("high") < pl.col("close"))
+    ).select(pl.len())
+    if bad_ohlc.collect().item() > 0:
+        raise SystemExit("[bridge] export panel invalid OHLC bounds")
+
+    neg_vol = lf.filter(pl.col("volume") < 0).select(pl.len())
+    if neg_vol.collect().item() > 0:
+        raise SystemExit("[bridge] export panel negative volume")
 
 
 def _normalized_path_str(path: str | Path) -> str:
@@ -64,9 +109,12 @@ def run_checks(
         print(f"[bridge] skip export panel: missing {path}")
         return 0
 
-    panel = _load_panel(path)
-    validate_contract_df("export_panel", panel)
-    print(f"[bridge] export panel contract: ok ({len(panel)} rows)")
+    lf = _scan_normalized_export_panel(path)
+    _lazy_export_panel_contract_checks(lf)
+
+    row_count = lf.select(pl.len()).collect().item()
+    ticker_count = lf.select(pl.col("ticker").n_unique()).collect().item()
+    print(f"[bridge] export panel contract: ok ({row_count} rows)")
 
     manifest_path = Path(str(path) + ".manifest.json").resolve()
     if not manifest_path.exists():
@@ -78,9 +126,9 @@ def run_checks(
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     if manifest.get("contract_name") != "export_panel":
         raise SystemExit(f"[bridge] wrong contract_name in export manifest: {manifest.get('contract_name')}")
-    if manifest.get("row_count") != len(panel):
+    if manifest.get("row_count") != row_count:
         raise SystemExit("[bridge] export manifest row_count mismatch")
-    if manifest.get("ticker_count") != panel["ticker"].n_unique():
+    if manifest.get("ticker_count") != ticker_count:
         raise SystemExit("[bridge] export manifest ticker_count mismatch")
     content_hash = hash_file(path)
     if manifest.get("content_hash") != content_hash:

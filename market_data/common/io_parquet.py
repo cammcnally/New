@@ -69,3 +69,15 @@ def row_count(path: Path) -> int:
     if path.is_dir() and not any(path.rglob("*.parquet")):
         return 0
     return read_parquet(path).select(pl.len()).collect().item()
+
+
+def list_parquet_files(path: Path) -> list[Path]:
+    """Return sorted parquet file paths under *path* (file or directory).
+
+    Hive-style layouts yield one path per ``*.parquet`` under the tree.
+    """
+    if not path.exists():
+        return []
+    if path.is_file():
+        return [path] if path.suffix.lower() == ".parquet" else []
+    return sorted(path.rglob("*.parquet"))

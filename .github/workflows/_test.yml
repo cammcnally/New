@@ -11,7 +11,7 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           version: "latest"
-      - run: uv sync --group dev --group control-plane
+      - run: uv sync --group dev --group control-plane --group ingestion --group ingestion-test
       - name: Run unit and regression tests
         run: uv run python -m pytest -q --tb=short
       - name: Run feature registry tests

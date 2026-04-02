@@ -51,6 +51,16 @@ mlruns/
 # Lineage events
 lineage_events/
 
+# Market data ingestion
+data_lake/
+*.duckdb
+*.duckdb.wal
+.env
+
+# Cleanup audit outputs
+outputs/
+!outputs/.gitkeep
+
 # Cursor skills/commands (generated, tracked separately)
 !.cursor/skills/
 !.cursor/skills/**

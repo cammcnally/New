@@ -8,15 +8,16 @@ _ROOT = Path(__file__).resolve().parents[1]
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from market_data.common.io_parquet import read_parquet
-from market_data.common.pandera_contracts import validate_contract_df
+from market_data.common.io_parquet import read_parquet, row_count
 from market_data.common.paths import silver_path
 from market_data.qa.qa_macro import check as qa_macro_check
 
 try:
     from tools.verify_market_data_common import add_market_data_args, load_verification_settings
+    from tools.verify_market_data_contracts import validate_silver_contract_dataset
 except ModuleNotFoundError:  # pragma: no cover - direct script execution
     from verify_market_data_common import add_market_data_args, load_verification_settings
+    from verify_market_data_contracts import validate_silver_contract_dataset
 
 
 def run_checks(*, data_lake: str | None = None, config_dir: str | None = None) -> int:
@@ -28,26 +29,38 @@ def run_checks(*, data_lake: str | None = None, config_dir: str | None = None) -
     warnings: list[str] = []
     macro_vintage_present = False
     macro_asof_present = False
+    vintage_lf = None
+    asof_lf = None
 
     if macro_vintage_path.exists():
-        vintages = read_parquet(macro_vintage_path).collect()
-        if not vintages.is_empty():
-            validate_contract_df("macro_observations_vintage", vintages)
-            print(f"[pit] macro_observations_vintage: ok ({len(vintages)} rows)")
-            macro_vintage_present = True
-        else:
+        if row_count(macro_vintage_path) == 0:
             warnings.append("macro_observations_vintage: empty")
+        else:
+            try:
+                n_v = validate_silver_contract_dataset(
+                    "macro_observations_vintage", macro_vintage_path
+                )
+            except Exception as exc:  # pragma: no cover - surfaced through exit status
+                raise SystemExit(
+                    f"[pit] macro_observations_vintage contract failed: {exc}"
+                ) from exc
+            print(f"[pit] macro_observations_vintage: ok ({n_v} rows)")
+            macro_vintage_present = True
+            vintage_lf = read_parquet(macro_vintage_path)
     else:
         warnings.append("macro_observations_vintage: missing")
 
     if macro_asof_path.exists():
-        asof = read_parquet(macro_asof_path).collect()
-        if not asof.is_empty():
-            validate_contract_df("macro_asof_daily", asof)
-            print(f"[pit] macro_asof_daily: ok ({len(asof)} rows)")
-            macro_asof_present = True
-        else:
+        if row_count(macro_asof_path) == 0:
             warnings.append("macro_asof_daily: empty")
+        else:
+            try:
+                n_a = validate_silver_contract_dataset("macro_asof_daily", macro_asof_path)
+            except Exception as exc:  # pragma: no cover - surfaced through exit status
+                raise SystemExit(f"[pit] macro_asof_daily contract failed: {exc}") from exc
+            print(f"[pit] macro_asof_daily: ok ({n_a} rows)")
+            macro_asof_present = True
+            asof_lf = read_parquet(macro_asof_path)
     else:
         warnings.append("macro_asof_daily: missing")
 
@@ -55,7 +68,11 @@ def run_checks(*, data_lake: str | None = None, config_dir: str | None = None) -
         print(f"[pit] optional macro PIT surfaces incomplete: {warnings}")
         return 0
 
-    findings = qa_macro_check(settings=settings)
+    findings = qa_macro_check(
+        settings=settings,
+        asof_lf=asof_lf,
+        vintage_lf=vintage_lf,
+    )
     if findings.get("errors"):
         raise SystemExit(f"[pit] macro QA errors: {findings['errors']}")
     print(f"[pit] macro QA warnings={len(findings.get('warnings', []))}")

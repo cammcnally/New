@@ -10,7 +10,7 @@
     "control_plane/policy_loader.py": "2a28813ad6cf0ef4a5e90ad506850added3d281d4950735e44aa097ca5cb14af",
     "control_plane/governance_registries.json": "393c03ac8e9285b31493e14e531bde63aea867a9860dea1d58be3b253ec6e7b4",
     "control_plane/cursor_projection.py": "1ef150370266fb1a4caabae15d06a5f23ee034c137d2deb6007aadb5260fba80",
-    "tools/control_plane.py": "f58be343deb562b543492b0b91062ddec5181d1387214506d673eaa28cd4635a",
+    "tools/control_plane.py": "3d393dada11620cbf4e8084972eb7f5d46bdbe4dd6b619969725fd54bf4ca4d0",
     "tools/render_cursor_projection.py": "25c4548c571ab0202c35b1470fce406d5378697dbac25f11bcdd4cc25b004e3d",
     "tools/migrate_repo_env.py": "a85b9bee29d25a730a6a53d3c91465d70dc887196885e007623f853c56536f15"
   }

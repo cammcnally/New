@@ -6,6 +6,7 @@ import polars as pl
 from market_data.common.dates import parse_date
 from market_data.common.io_parquet import read_parquet, write_parquet
 from market_data.common.logging import get_logger
+from market_data.common.pandera_contracts import validate_contract_df
 from market_data.common.paths import silver_path
 from market_data.common.settings import IngestionSettings, load_yaml_config
 
@@ -76,6 +77,7 @@ def build(
         return {"rows": 0}
 
     df = df.with_columns(pl.col("trade_date").dt.year().alias("year"))
+    validate_contract_df("benchmark_prices_daily", df.drop("year"))
     out_dir = silver_path("benchmark_prices_daily", settings)
     written = write_parquet(df, out_dir, partition_by=["year"])
     log.info("silver benchmark_prices_daily: %d rows -> %s", written, out_dir)

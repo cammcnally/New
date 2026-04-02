@@ -78,6 +78,17 @@ uv run python tools/verify_market_data_bridge.py --panel-path panel_ohlcv_clean.
 uv run python tools/verify_market_data.py
 ```
 
+### 6. DVC (narrow export spine)
+
+`dvc.yaml` versions only the exported panel CSV and its sidecar manifest. Recreate tracked outputs with a lake that already passes verification:
+
+```powershell
+uv run python tools/run_repo_e2e.py --stop-after export_panel
+dvc repro
+```
+
+Lake paths under `data_lake/` remain gitignored; they are not DVC outputs. Populate macro PIT silver tables with a valid `FRED_API_KEY` and the FRED vintage ingest → bronze → silver chain (`macro_series.yaml` marks `use_vintages: true` for configured series).
+
 These commands validate:
 
 - required-core identity and schema contracts

@@ -19,9 +19,13 @@ jobs:
     name: Contract verification
     uses: ./.github/workflows/_contracts.yml
 
-  data-contracts:
-    name: Data contract validation
+  ge-suites:
+    name: GE suite validation
     uses: ./.github/workflows/_data-contracts.yml
+
+  market-data:
+    name: Canonical market-data verification
+    uses: ./.github/workflows/_market-data.yml
 
   generated-drift:
     name: Generated file drift check

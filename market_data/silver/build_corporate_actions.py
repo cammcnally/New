@@ -8,6 +8,7 @@ import polars as pl
 from market_data.common.dates import parse_date, utc_now
 from market_data.common.io_parquet import read_parquet, write_parquet
 from market_data.common.logging import get_logger
+from market_data.common.pandera_contracts import validate_contract_df
 from market_data.common.paths import bronze_path, silver_path
 from market_data.common.schema_registry import CORPORATE_ACTIONS
 from market_data.common.settings import IngestionSettings
@@ -101,6 +102,8 @@ def build(
     for col, dtype in CORPORATE_ACTIONS.items():
         if col in out.columns and out.schema[col] != dtype:
             out = out.with_columns(pl.col(col).cast(dtype))
+
+    validate_contract_df("corporate_actions", out)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     rows = write_parquet(out, out_path)

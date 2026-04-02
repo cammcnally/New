@@ -417,6 +417,18 @@ Required repo gates:
 - `bridge_guard`
 - `verification_guard`
 
+## Silver legacy Phase-2 surfaces (write-time contracts)
+
+These tables use legacy column shapes aligned to current builders (sid-keyed or Alpha Vantage paths). They are registered as `contract_defined_deferred` for bundle gating: the global contract verifier does not require them until the roadmap promotes them, but builders run `validate_contract_df` at write time.
+
+| Table | Notes |
+| --- | --- |
+| `benchmark_prices_daily` | Slice of `prices_1d_unadjusted` for configured benchmarks; PK `(sid, trade_date, source_vendor)` |
+| `corporate_actions` | From bronze `av_daily_adjusted`; PK `(sid, action_type, ex_date, source_vendor)`; `record_date` / `payment_date` / `declared_date` nullable |
+| `adjustment_factors` | Derived from split corporate actions; PK `(sid, effective_date)` |
+
+Gold `gold_macro_context` pivots silver `macro_asof_daily` on **`asof_date`** (not `trade_date`), matching the canonical macro PIT model.
+
 ## Documentation Synchronization Rule
 
 A material change affecting any of the following is incomplete unless `README.md`, `market_data/COMMANDS.md`, and this document are updated in the same change:
