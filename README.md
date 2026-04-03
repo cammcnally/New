@@ -11,7 +11,7 @@ The repo's center of gravity is no longer a panel CSV. The panel export exists s
 
 ## Authority
 
-Canonical governance and semantics live in:
+Canonical governance, runtime semantics, and target-state architecture references live in:
 
 - `AGENTS.md`
 - `docs/data_contract.md`
@@ -26,7 +26,7 @@ Authority boundaries:
 - `docs/end_to_end_trading_system_architecture.md` consolidates the broader future-state downstream trading-system design without broadening current frozen Phase 1 claims by itself.
 - `README.md` is the operator-facing architecture and workflow guide. It must stay synchronized with code and contract changes.
 
-If these surfaces disagree, update the stale document rather than inferring a new architecture from outdated text.
+If these surfaces disagree, follow the tighter authority boundary first: `AGENTS.md`, `docs/data_contract.md`, and `docs/phase1-*.md` outrank the broader target-state blueprint in `docs/end_to_end_trading_system_architecture.md`. Update the stale document rather than inferring a new architecture from outdated text.
 
 **Platform authority:** Linux CI is the canonical release authority. Windows may be used for development. WSL is the preferred local parity environment for agent-driven work and final validation.
 

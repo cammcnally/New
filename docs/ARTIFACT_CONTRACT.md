@@ -2,7 +2,7 @@
 
 Every important experiment or strategy run should emit a deterministic artifact bundle.
 
-This document is cross-cutting. It does not replace [docs/data_contract.md](e:\stock_csvs_AI-Perspective\NEW\docs\data_contract.md), which remains the authority for market-data surfaces and schema semantics.
+This document is cross-cutting. It does not replace [docs/data_contract.md](./data_contract.md), which remains the authority for market-data surfaces and schema semantics.
 
 For the broader post-Phase-1 downstream architecture that motivates richer artifact and reporting requirements, also see `docs/end_to_end_trading_system_architecture.md`.
 
@@ -17,13 +17,13 @@ For the broader post-Phase-1 downstream architecture that motivates richer artif
 - benchmark_id
 - risk_free_source
 - config_path or config_hash
-- summary_metrics artifact
+- overall_metrics artifact
 - report artifact
 - validation artifact
 
 ## Canonical outputs
 
-- summary_metrics.json
+- overall_metrics.json
 - metrics_detail.parquet
 - equity_curve_daily.parquet
 - validation_folds.parquet

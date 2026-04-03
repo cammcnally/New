@@ -229,14 +229,14 @@ The fixed regime model is a `2`-state Hidden Markov Model:
 Inputs:
 
 - market return via `SPY` proxy
-- `VIX` proxy or realized volatility
+- canonical spot-volatility context such as `^VIX`, or realized volatility when that context surface is unavailable
 
 States:
 
 - low volatility
 - high volatility
 
-Regime context feeds model conditioning, ensemble behavior, and diagnostics. Benchmark semantics remain governed by `docs/data_contract.md`.
+Regime context feeds model conditioning, ensemble behavior, and diagnostics. Benchmark semantics remain governed by `docs/data_contract.md`, including the rule that `VIXY` must not be treated as equivalent to `^VIX`.
 
 ## 5. Validation, loss, and model stack
 
@@ -263,7 +263,7 @@ Primary objective:
 
 Secondary downside penalty:
 
-`L_final = L + 2 * max(0, -R_hat)^2`
+`L_final = L + 2 * mean(max(0, -R_hat_{i,t})^2)`
 
 Interpretation:
 
@@ -347,6 +347,7 @@ Selection:
 - short: bottom `15%`
 
 Selection happens inside the daily trading universe of the top `150` names by ADV.
+The 15% buckets define the candidate set before optimization; the final realized holdings and gross exposure are determined by the portfolio constraints below.
 
 ### 6.2 Optimization
 
@@ -373,6 +374,11 @@ Constraints:
 - gross exposure `<= 1.0`
 - net exposure `= 0.0`
 - sector neutrality required
+
+Implementation note:
+
+- the optimizer may hold fewer than every bucket candidate when the `2%` position cap, neutrality rules, and gross/net exposure constraints bind
+- if the target gross exposure cannot be reached without violating those constraints, the constrained lower-gross solution is the correct outcome
 
 ### 6.3 Risk overlays
 
