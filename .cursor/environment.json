@@ -1,0 +1,12 @@
+{
+  "$schema": "https://cursor.com/schemas/environment.schema.json",
+  "install": "bash .cursor/install.sh",
+  "start": "bash .cursor/start.sh",
+  "terminals": [
+    {
+      "name": "repo-shell",
+      "command": "bash .cursor/terminal.sh",
+      "description": "Repo root shell with Python 3.11.9, uv-synced environment, and PIPELINE_BASE_PATH set."
+    }
+  ]
+}
