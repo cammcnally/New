@@ -6,7 +6,16 @@ Use this file together with:
 
 - `README.md`
 - `docs/data_contract.md`
+- `docs/specs/CANONICAL_INSTALLATION_DIRECTIVE.md`
 - `docs/market_data_roadmap.md`
+
+Installation, environment, and layout guidance inside this command guide's scope
+defer to `docs/specs/CANONICAL_INSTALLATION_DIRECTIVE.md`. This guide does not
+supersede `AGENTS.md`, the frozen Phase 1 docs, or current `Pipeline.py`
+behavior.
+
+Primary repo-governance checks live in `README.md` and `make verify`.
+Use `tools/verify_scoped_canon.py` only when maintaining the deferred target-state spec surfaces.
 
 ## Primary Flow
 
@@ -77,6 +86,12 @@ uv run python tools/verify_market_data_docs_sync.py
 uv run python tools/verify_market_data_bridge.py --panel-path panel_ohlcv_clean.csv --require-manifest
 uv run python tools/verify_market_data_bridge.py --panel-path panel_ohlcv_clean.csv --require-manifest --require-benchmark-artifacts
 uv run python tools/verify_market_data.py
+```
+
+### 5b. Deferred Target-State Spec Consistency
+
+```powershell
+uv run python tools/verify_scoped_canon.py
 ```
 
 ### 6. DVC (narrow export spine)

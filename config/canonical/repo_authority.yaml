@@ -1,0 +1,98 @@
+version: 1
+
+protected_authorities:
+  - AGENTS.md
+  - docs/data_contract.md
+  - docs/phase1-research-spec.md
+  - docs/phase1-execution-roadmap.md
+  - README.md
+  - docs/governance/REPO_AUTHORITY_POLICY.md
+  - docs/governance/CHANGE_CONTROL.md
+  - docs/governance/ACCEPTANCE_GATES.md
+  - docs/specs/CANONICAL_INSTALLATION_DIRECTIVE.md
+  - docs/specs/CANONICAL_DAILY_CROSS_SECTIONAL_EQUITY_ALPHA_SPEC.md
+  - config/canonical/repo_authority.yaml
+  - config/canonical/frozen_surface_hashes.json
+
+frozen_boundary_only:
+  - Pipeline.py
+  - tools/phase1_sanity_check.py
+  - feature_registry/**
+  - tests/test_phase1_*.py
+
+generated_shims:
+  - .cursor/**
+  - contracts/*.lock.json
+
+generated_outputs:
+  - panel_ohlcv_clean.csv
+  - "**/*.manifest.json"
+  - data_lake/manifests/**
+  - data_lake/**/benchmark_surface_daily*
+  - generated/**
+  - projections/**
+
+live_runtime:
+  - market_data/**
+  - control_plane/**
+  - contracts/**
+  - configs/**
+  - config/canonical/**
+  - tools/**
+  - tests/**
+  - tools/control_plane.py
+  - tools/verify_market_data_contracts.py
+  - market_data/common/schema_registry.py
+  - market_data/common/pandera_contracts.py
+  - strategy-report.qmd
+  - .github/workflows/**
+  - pyproject.toml
+  - .python-version
+  - uv.lock
+  - Makefile
+  - .gitignore
+  - .gitattributes
+  - package.json
+  - package-lock.json
+  - repo_control/file_registry.yaml
+  - tools/audit_file_registry.py
+  - tools/report_cleanup_candidates.py
+  - tools/verify_*.py
+  - tools/render_cursor_projection.py
+  - tools/repo_authority_common.py
+  - tests/acceptance/**
+
+compatibility_only:
+  - market_data/silver/security_master
+  - market_data/bridge/**
+  - panel_ohlcv_clean.csv
+  - panel_ohlcv_smoke_tier1.csv
+
+optional_secondary:
+  - mlflow_integration/**
+  - lineage/**
+  - gx/**
+  - dvc.yaml
+  - analysis/**
+  - dagster_pipeline/**
+  - .agents/**
+  - .codex/**
+  - .vscode/**
+  - docs/*.md
+  - docs/archive/**
+  - docs/end_to_end_trading_system_architecture.md
+  - docs/implementation_runbook.md
+  - docs/market_data_roadmap.md
+  - docs/contract-inventory.md
+  - docs/repo_cleanup_policy.md
+  - docs/run_status.md
+  - docs/PROJECT_OUTCOME.md
+
+merge_demote_candidates:
+  - docs/plans/**
+  - docs/checklists/**
+  - docs/workplans/**
+  - docs/archive_candidates/**
+  - docs/COMBINED_IMPLEMENTATION_DIRECTIVE_v1.md
+  - docs/2026-04-03-benchmark-architecture-implementation-plan.md
+  - docs/benchmark_architecture_first_compliant_checklist.md

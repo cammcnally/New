@@ -12,12 +12,10 @@ env/
 node_modules/
 
 # IDE / editor
-# Ignore .cursor contents except tracked projection paths (cannot re-include children if `.cursor/` is ignored).
-.cursor/*
-!.cursor/rules/
-!.cursor/rules/**
-!.cursor/agents/
-!.cursor/agents/**
+# `.cursor/` is intentionally tracked so generated projection files and cloud-agent
+# environment helpers are available to local and cloud agents.
+!.cursor/
+!.cursor/**
 .idea/
 *.swp
 *.swo
@@ -65,14 +63,3 @@ data_lake/
 outputs/
 !outputs/.gitkeep
 
-# Cursor skills/commands (generated, tracked separately)
-!.cursor/skills/
-!.cursor/skills/**
-!.cursor/commands/
-!.cursor/commands/**
-!.cursor/settings.json
-!.cursor/projection_manifest.json
-!.cursor/environment.json
-!.cursor/install.sh
-!.cursor/start.sh
-!.cursor/terminal.sh

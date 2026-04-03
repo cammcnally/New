@@ -1,0 +1,33 @@
+schema_version: 1
+mirror_id: portfolio
+scoped_canon_source: docs/specs/CANONICAL_INSTALLATION_DIRECTIVE.md
+area_status: mixed_current_and_deferred
+precedence:
+  higher_priority_authorities:
+    - AGENTS.md
+    - docs/phase1-research-spec.md
+    - docs/phase1-execution-roadmap.md
+  preserved_runtime_surface: Pipeline.py
+  lower_precedence_surfaces:
+    - README.md
+    - docs/implementation_runbook.md
+    - market_data/COMMANDS.md
+    - docs/end_to_end_trading_system_architecture.md
+effective_current_canon:
+  authority:
+    - docs/phase1-research-spec.md
+    - Pipeline.py
+  summary: Portfolio behavior remains the frozen Phase 1 cap-and-promotion path.
+  implemented_state:
+    current_scope: frozen_phase1_fixed_8_cap_threshold_policy_portfolio
+    runtime_surface: Pipeline.py
+deferred_target_canon:
+  authority:
+    - docs/specs/CANONICAL_DAILY_CROSS_SECTIONAL_EQUITY_ALPHA_SPEC.md
+  summary: The target market-neutral optimizer remains deferred architecture guidance.
+  target_state:
+    portfolio_construction: sector_neutral_market_neutral_long_short_top_150_ADV
+    gross_exposure: 1.0
+    net_exposure: 0.0
+    max_position: 0.02
+    status: deferred_target_architecture_only

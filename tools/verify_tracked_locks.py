@@ -8,12 +8,18 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from control_plane.cursor_projection import build_projection_manifest_payload
 from control_plane.policy_loader import (
     build_policy_fingerprint_lock_payload,
     compute_loader_manifest_hash,
     compute_policy_fingerprint_from_payload,
     load_canonical_policy_payload,
 )
+
+SCOPED_CANON_PATHS = {
+    "docs/specs/CANONICAL_INSTALLATION_DIRECTIVE.md",
+    "docs/specs/CANONICAL_DAILY_CROSS_SECTIONAL_EQUITY_ALPHA_SPEC.md",
+}
 
 
 def main() -> int:
@@ -34,19 +40,29 @@ def main() -> int:
     expected_fingerprint = compute_policy_fingerprint_from_payload(canonical_payload)
     expected_manifest_hash = compute_loader_manifest_hash(PROJECT_ROOT)
     expected_policy_lock = build_policy_fingerprint_lock_payload(PROJECT_ROOT, canonical_payload)
+    expected_projection_lock = build_projection_manifest_payload(PROJECT_ROOT)
 
     if bootstrap.get("policy_fingerprint") != expected_fingerprint:
         raise SystemExit("Bootstrap lock policy fingerprint mismatch")
     if bootstrap.get("loader_manifest_hash") != expected_manifest_hash:
         raise SystemExit("Bootstrap lock loader manifest hash mismatch")
+    if bootstrap.get("policy_path") != "AGENTS.md":
+        raise SystemExit("Bootstrap lock policy_path must remain AGENTS.md")
+    if bootstrap.get("policy_path") in SCOPED_CANON_PATHS:
+        raise SystemExit("Bootstrap lock cannot promote a scoped canon doc to policy_path")
     if policy != expected_policy_lock:
         raise SystemExit("Policy fingerprint lock mismatch")
-    if projection.get("generated_by") != "tools/render_cursor_projection.py":
-        raise SystemExit("Projection lock generated_by mismatch")
-    if projection.get("source_of_truth") != "AGENTS.md":
-        raise SystemExit("Projection lock source_of_truth mismatch")
-    if projection.get("canonical_skill_root") != ".agents/skills":
-        raise SystemExit("Projection lock canonical_skill_root mismatch")
+    if policy.get("policy_path") != "AGENTS.md":
+        raise SystemExit("Policy fingerprint lock policy_path must remain AGENTS.md")
+    if policy.get("policy_path") in SCOPED_CANON_PATHS:
+        raise SystemExit("Policy fingerprint lock cannot promote a scoped canon doc to policy_path")
+    if projection != expected_projection_lock:
+        raise SystemExit("Projection lock mismatch")
+    render_inputs = projection.get("render_inputs")
+    if not isinstance(render_inputs, list) or not all(isinstance(item, str) for item in render_inputs):
+        raise SystemExit("Projection lock render_inputs must be a list of strings")
+    if any(item in SCOPED_CANON_PATHS for item in render_inputs):
+        raise SystemExit("Projection lock cannot promote a scoped canon doc into render_inputs")
 
     print("tracked_locks_ok")
     return 0

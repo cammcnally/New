@@ -1,6 +1,13 @@
+Status: Non-authoritative work artifact
+Canonical authority:
+- AGENTS.md
+- docs/data_contract.md
+- docs/phase1-research-spec.md
+- docs/phase1-execution-roadmap.md
+
 # Benchmark Architecture Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> Historical implementation plan retained for sequencing traceability. Use the canonical surfaces above plus `README.md` and `market_data/COMMANDS.md` for live authority.
 
 **Goal:** Build the first compliant benchmark-mapping layer for the repo: canonical benchmark definitions and price surfaces, SEC_SIC_4-based classification history, deterministic SPY-plus-sector benchmark mapping, benchmark side exports for `Pipeline.py`, and fail-closed verification without redefining frozen Phase 1 research semantics.
 
@@ -12,8 +19,8 @@
 
 ## Spec Inputs
 
-- **Normative combined directive:** `docs/COMBINED_IMPLEMENTATION_DIRECTIVE_v1.md` (benchmark patch + alphalens factor-diagnostics; implementation order **F**).
-- Spec / checklist: `docs/benchmark_architecture_first_compliant_checklist.md`
+- **Related work artifact:** `docs/COMBINED_IMPLEMENTATION_DIRECTIVE_v1.md` (benchmark patch + alphalens factor-diagnostics; implementation order **F**).
+- Historical checklist: `docs/benchmark_architecture_first_compliant_checklist.md`
 - Market-data contract authority: `docs/data_contract.md`
 - Repo architecture and operator workflow: `README.md`
 - Phase 1 governance: `docs/phase1-research-spec.md`
@@ -635,7 +642,7 @@ Expected:
 
 ## Task 8: Alphalens-Reloaded Factor-Diagnostics Layer (Directive A + Order F.7)
 
-**Normative reference:** `docs/COMBINED_IMPLEMENTATION_DIRECTIVE_v1.md` section **A**.
+**Related work-artifact reference:** `docs/COMBINED_IMPLEMENTATION_DIRECTIVE_v1.md` section **A**.
 
 **Files:**
 

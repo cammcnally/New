@@ -30,3 +30,8 @@ jobs:
   generated-drift:
     name: Generated file drift check
     uses: ./.github/workflows/_regenerate-check.yml
+
+  repo-governance:
+    name: Repo governance
+    uses: ./.github/workflows/repo-governance.yml
+

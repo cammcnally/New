@@ -28,6 +28,8 @@ from control_plane.task_state import (
     write_review_output,
     write_verifier_evidence,
 )
+from tools.verify_scoped_canon import collect_errors
+from tools.verify_tracked_locks import SCOPED_CANON_PATHS
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -307,3 +309,17 @@ def test_phase1_change_check_fails_on_protected_surface_without_policy_changing(
     assert result.returncode == 2
     payload = json.loads(result.stdout)
     assert payload["mismatch_check"] == "fail_protected_surface_without_policy_classification"
+
+
+def test_scoped_canon_verifier_passes_for_repo_state() -> None:
+    assert collect_errors(PROJECT_ROOT) == []
+
+
+def test_scoped_canon_docs_are_not_bootstrap_policy_sources() -> None:
+    bootstrap = json.loads((PROJECT_ROOT / "contracts" / "bootstrap_pin.lock.json").read_text(encoding="utf-8"))
+    policy = json.loads((PROJECT_ROOT / "contracts" / "policy_fingerprint.lock.json").read_text(encoding="utf-8"))
+
+    assert bootstrap["policy_path"] == "AGENTS.md"
+    assert policy["policy_path"] == "AGENTS.md"
+    assert bootstrap["policy_path"] not in SCOPED_CANON_PATHS
+    assert policy["policy_path"] not in SCOPED_CANON_PATHS

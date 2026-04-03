@@ -6,11 +6,18 @@ This document consolidates the three-part trading-system brief into a single rep
 
 It keeps the most specific non-contradictory choices, resolves internal draft conflicts, and maps the result onto the repository's existing authority boundaries.
 
+For deferred target-state specification details, defer to:
+
+- `docs/specs/CANONICAL_INSTALLATION_DIRECTIVE.md`
+- `docs/specs/CANONICAL_DAILY_CROSS_SECTIONAL_EQUITY_ALPHA_SPEC.md`
+
 ### Authority boundaries
 
 - `docs/data_contract.md` remains authoritative for canonical market-data, point-in-time (PIT) rules, benchmark semantics, manifests, and export contracts.
 - `docs/phase1-research-spec.md` and `docs/phase1-execution-roadmap.md` remain authoritative for the current frozen Phase 1 claim boundary and validation semantics.
-- This document defines the broader target-state architecture for future full-system integration, post-Phase 1 planning, and cross-layer design decisions.
+- `docs/specs/CANONICAL_INSTALLATION_DIRECTIVE.md` is the deferred target-state specification for installation, environment, dependency-policy interpretation, file-structure guidance, and routing to target-state architecture work.
+- `docs/specs/CANONICAL_DAILY_CROSS_SECTIONAL_EQUITY_ALPHA_SPEC.md` is the deferred target-state specification for the downstream alpha architecture.
+- This document remains the broader explanatory blueprint for future full-system integration, post-Phase 1 planning, and cross-layer design decisions.
 
 This document does not by itself broaden current Phase 1 claims.
 
@@ -26,7 +33,8 @@ This document does not by itself broaden current Phase 1 claims.
 | --- | --- | --- |
 | Canonical data plane | `market_data/**/*`, `configs/**/*.yaml`, `docs/data_contract.md` | PIT-safe identity, prices, benchmarks, compatibility exports, dataset and export build references |
 | Frozen Phase 1 runtime | `Pipeline.py`, `feature_registry/**/*`, `docs/phase1-*.md` | Current validated downstream implementation and current claim boundary |
-| Broader target architecture | `docs/end_to_end_trading_system_architecture.md` | Future-state universe, features, validation, models, portfolio, execution, monitoring, and reporting design |
+| Deferred target architecture specs | `docs/specs/CANONICAL_DAILY_CROSS_SECTIONAL_EQUITY_ALPHA_SPEC.md`, `config/canonical/*.yaml` | Deferred target-state choices without rewriting the live Phase 1 runtime |
+| Broader target architecture | `docs/end_to_end_trading_system_architecture.md` | Explanatory blueprint and context for future-state universe, features, validation, models, portfolio, execution, monitoring, and reporting design |
 | Reporting and artifacts | `docs/ARTIFACT_CONTRACT.md`, `strategy-report.qmd`, `mlflow_integration/**/*` | Deterministic artifact bundle, report rendering, and experiment tracking |
 
 ## 1. System objective and locked flow
@@ -109,7 +117,7 @@ Average daily dollar volume:
 
 `ADV_i = (1 / N) * sum_{t=1..N}(Price_{i,t} * Volume_{i,t})`
 
-Concrete market-data eligibility filters such as security type, listing age, minimum price, and other canonical universe screens remain owned by `configs/universe.yaml` and the canonical market-data layer. This document defines the downstream daily selection policy on top of that canonical eligibility set.
+Concrete market-data eligibility filters such as security type, listing age, minimum price, and other canonical universe screens remain owned by `configs/universe.yaml` and the canonical market-data layer. This document describes the downstream daily selection policy on top of that canonical eligibility set.
 
 ### 3.2 Single timeline index
 

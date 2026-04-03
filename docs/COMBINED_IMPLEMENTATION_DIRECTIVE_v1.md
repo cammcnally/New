@@ -1,6 +1,13 @@
+Status: Non-authoritative work artifact
+Canonical authority:
+- AGENTS.md
+- docs/data_contract.md
+- docs/phase1-research-spec.md
+- docs/phase1-execution-roadmap.md
+
 # COMBINED_IMPLEMENTATION_DIRECTIVE_v1
 
-Normative implementation directive for this repository. Do not reinterpret into a staged architecture redesign; implement the complete target architecture defined here.
+Historical combined work artifact retained for implementation traceability. Canonical benchmark/data semantics belong in `docs/data_contract.md`, frozen Phase 1 semantics belong in `docs/phase1-*.md`, operator commands belong in `README.md` or `market_data/COMMANDS.md`, and generated/local shims must defer to `AGENTS.md`.
 
 ---
 

@@ -1,10 +1,17 @@
+Status: Non-authoritative work artifact
+Canonical authority:
+- AGENTS.md
+- docs/data_contract.md
+- docs/phase1-research-spec.md
+- docs/phase1-execution-roadmap.md
+
 # Benchmark Architecture First Compliant Checklist
 
-Repo-local canonical working checklist on `E:` for the first compliant benchmark-mapping implementation. This file supersedes the external Cursor-hosted plan as the active working plan for benchmark architecture work in this repo.
+Historical repo-local implementation checklist retained for benchmark-architecture traceability on `E:`. Canonical benchmark/data semantics now belong in `docs/data_contract.md`, operator commands belong in `market_data/COMMANDS.md`, and verifier expectations belong in tests plus `tools/verify_*.py`.
 
-**Normative combined directive (benchmark + factor diagnostics):** `docs/COMBINED_IMPLEMENTATION_DIRECTIVE_v1.md`.
+**Related work artifact:** `docs/COMBINED_IMPLEMENTATION_DIRECTIVE_v1.md`.
 
-**Separate track (not the benchmark engine):** Cross-sectional factor diagnostics use **alphalens-reloaded** under `analysis/alpha_diagnostics/`; see directive **A** and implementation plan **Task 8**.
+**Separate track (not the benchmark engine):** Cross-sectional factor diagnostics use **alphalens-reloaded** under `analysis/alpha_diagnostics/`; see the related work artifacts and the canonical surfaces above.
 
 ## Repo-Specific Starting Point
 

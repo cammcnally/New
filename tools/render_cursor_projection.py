@@ -9,6 +9,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from control_plane.cursor_projection import build_cursor_projection, render_cursor_projection
+from tools.repo_authority_common import tracked_files
 from tools.refresh_projection_lock import refresh_projection_lock
 
 
@@ -18,6 +19,8 @@ def main() -> int:
     if check_mode:
         projection = build_cursor_projection(PROJECT_ROOT)
         drifted: list[str] = []
+        expected_cursor_files = set(projection)
+        actual_cursor_files = {path for path in tracked_files() if path.startswith(".cursor/")}
         for relative_path, expected_content in projection.items():
             target = PROJECT_ROOT / relative_path
             expected = expected_content.rstrip() + "\n"
@@ -27,6 +30,9 @@ def main() -> int:
             actual = target.read_text(encoding="utf-8")
             if actual != expected:
                 drifted.append(f"drifted: {relative_path}")
+        extra_cursor_files = sorted(actual_cursor_files - expected_cursor_files)
+        if extra_cursor_files:
+            drifted.extend(f"unexpected: {relative_path}" for relative_path in extra_cursor_files)
         if drifted:
             print("Generated cursor projection has drifted from canonical sources:", file=sys.stderr)
             for item in drifted:

@@ -1,0 +1,30 @@
+---
+description: Compatibility shim for canonical Phase 1 guardrails.
+alwaysApply: true
+---
+
+# Phase 1 Governance Guardrails
+
+This `.cursor` file is generated compatibility output only.
+Primary governing files for this concern are `AGENTS.md`, `docs/phase1-research-spec.md`, `docs/phase1-execution-roadmap.md`, and `README.md`.
+Do not use this file to add or redefine repo rules.
+
+## Canonical documents
+
+- `docs/phase1-research-spec.md`
+- `docs/phase1-execution-roadmap.md`
+- `AGENTS.md`
+
+## Mandatory pre-edit classification
+
+Before editing `Pipeline.py` or any Phase 1 logic, use the canonical classification set from `AGENTS.md`:
+
+- `behavior_preserving`
+- `spec_implementing`
+- `spec_changing`
+- `policy_changing`
+- `operational_only`
+- `test_only`
+- `docs_only`
+
+This shim exists so local Cursor workflows stay aligned with the runtime. If this file disagrees with `AGENTS.md`, `AGENTS.md` wins.

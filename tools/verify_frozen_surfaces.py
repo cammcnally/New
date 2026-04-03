@@ -15,6 +15,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from control_plane.policy_loader import load_canonical_policy_payload
+from tools.verify_scoped_canon import run_checks as run_scoped_canon_checks
 
 MANIFEST_PATH = PROJECT_ROOT / "contracts" / "frozen_surfaces_manifest.json"
 PHASE1_CONTRACT_PATH = PROJECT_ROOT / "control_plane" / "phase1_contract.json"
@@ -108,6 +109,7 @@ def main() -> int:
     _ensure_no_legacy_runtime_tokens(tracked_files)
     _ensure_runtime_contracts()
     _ensure_no_bare_pytest_lines()
+    run_scoped_canon_checks(PROJECT_ROOT)
     print("frozen_surfaces_ok")
     return 0
 

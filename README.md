@@ -11,22 +11,36 @@ The repo's center of gravity is no longer a panel CSV. The panel export exists s
 
 ## Authority
 
-Canonical governance, runtime semantics, and target-state architecture references live in:
+Current governing references live in:
 
 - `AGENTS.md`
 - `docs/data_contract.md`
 - `docs/phase1-research-spec.md`
 - `docs/phase1-execution-roadmap.md`
+- `docs/governance/REPO_AUTHORITY_POLICY.md`
+- `config/canonical/repo_authority.yaml`
+
+Deferred target-state specification references live in:
+
+- `docs/specs/CANONICAL_INSTALLATION_DIRECTIVE.md`
+- `docs/specs/CANONICAL_DAILY_CROSS_SECTIONAL_EQUITY_ALPHA_SPEC.md`
+- `docs/governance/CHANGE_CONTROL.md`
+- `docs/governance/ACCEPTANCE_GATES.md`
 - `docs/end_to_end_trading_system_architecture.md`
 
 Authority boundaries:
 
 - `docs/data_contract.md` is normative for the market-data layer.
 - `docs/phase1-research-spec.md` and `docs/phase1-execution-roadmap.md` are normative for downstream Phase 1 research semantics.
-- `docs/end_to_end_trading_system_architecture.md` consolidates the broader future-state downstream trading-system design without broadening current frozen Phase 1 claims by itself.
+- `docs/governance/REPO_AUTHORITY_POLICY.md` plus `config/canonical/repo_authority.yaml` govern repo-authority enforcement, generated-surface discipline, frozen-boundary policy, and demotion checks.
+- `docs/specs/CANONICAL_INSTALLATION_DIRECTIVE.md` is a deferred target-state specification for installation, environment, dependency-policy interpretation, file-structure guidance, runtime-path guidance, and target-state architecture routing. It does not supersede higher-priority authority.
+- `docs/specs/CANONICAL_DAILY_CROSS_SECTIONAL_EQUITY_ALPHA_SPEC.md` is a deferred target-state specification for the future downstream alpha stack. It does not by itself replace current `Pipeline.py` behavior.
+- `docs/end_to_end_trading_system_architecture.md` is the broader explanatory blueprint for future-state downstream design and should defer to the deferred spec surfaces above.
 - `README.md` is the operator-facing architecture and workflow guide. It must stay synchronized with code and contract changes.
 
-If these surfaces disagree, follow the tighter authority boundary first: `AGENTS.md`, `docs/data_contract.md`, and `docs/phase1-*.md` outrank the broader target-state blueprint in `docs/end_to_end_trading_system_architecture.md`. Update the stale document rather than inferring a new architecture from outdated text.
+If these surfaces disagree, follow the tighter authority boundary first: `AGENTS.md`, `docs/data_contract.md`, `docs/phase1-*.md`, `docs/governance/REPO_AUTHORITY_POLICY.md`, and current `Pipeline.py` behavior outrank the deferred target-state specs. The deferred target-state specs outrank lower-precedence summaries such as `README.md`, `docs/implementation_runbook.md`, `market_data/COMMANDS.md`, and `docs/end_to_end_trading_system_architecture.md` within their declared scope. Update the stale document rather than inferring a new architecture from outdated text.
+
+Poetry remains deferred and not authoritative in the current repo state. The implemented runtime layout remains `market_data/` plus top-level `Pipeline.py`, while any `pipeline/`-first decomposition remains target-state guidance only.
 
 **Platform authority:** Linux CI is the canonical release authority. Windows may be used for development. WSL is the preferred local parity environment for agent-driven work and final validation.
 
@@ -105,6 +119,7 @@ Primary repo surfaces:
 - `security_master` is compatibility-only.
 - `security_master` must be auto-generated from canonical identity tables and treated as read-only compatibility output.
 - `Pipeline.py` must keep working through the export/compatibility bridge until all downstream consumers are migrated.
+- `config/canonical/` holds the repo-authority registry, frozen-boundary hashes, and deferred target-state mirrors; it must never supersede `AGENTS.md`, the frozen Phase 1 docs, or current implemented `Pipeline.py` behavior.
 - Macro joins must be point-in-time safe.
 - Canonical exports must satisfy both entity-PIT and time-PIT.
 - Benchmark/reference instruments must carry explicit semantic roles.
@@ -120,6 +135,9 @@ Primary repo surfaces:
 - market-data verification entrypoints under `tools/`
 - `AGENTS.md`
 - Phase 1 normative docs under `docs/phase1-*.md`
+- `docs/specs/*.md` for deferred target-state specifications
+- `docs/governance/*.md` for repo-authority policy plus deferred target-state change control and acceptance gates
+- `config/canonical/*` for the machine-readable authority registry, frozen-boundary hashes, and deferred target-state mirrors
 
 ### Compatibility-Only
 
@@ -246,6 +264,9 @@ If you need to change those meanings, update `docs/phase1-research-spec.md` firs
 | `docs/data_contract.md` | Normative data-layer contract |
 | `docs/phase1-research-spec.md` | Normative downstream research semantics |
 | `docs/phase1-execution-roadmap.md` | Ordered Phase 1 execution roadmap |
+| `docs/specs/` | Deferred target-state installation and alpha specifications |
+| `docs/governance/` | Repo-authority policy plus deferred target-state change control and acceptance gates |
+| `config/canonical/` | Machine-readable authority registry, frozen-boundary hashes, and deferred target-state mirrors |
 | `docs/market_data_roadmap.md` | Deferred tooling and revisit conditions |
 | `tests/market_data/` | Market-data unit and contract tests |
 | `tests/test_phase1_*.py` | Downstream Phase 1 helper and smoke tests |
@@ -392,9 +413,20 @@ Repo and control-plane validation:
 
 ```powershell
 .\.venv\Scripts\python.exe tools/verify_runtime.py
+.\.venv\Scripts\python.exe tools/verify_repo_authority.py
+.\.venv\Scripts\python.exe tools/verify_generated_surfaces.py
 .\.venv\Scripts\python.exe tools/verify_tracked_locks.py
-.\.venv\Scripts\python.exe tools/verify_frozen_surfaces.py
+.\.venv\Scripts\python.exe tools/verify_frozen_boundaries.py
+.\.venv\Scripts\python.exe tools/verify_plan_demotions.py
 .\.venv\Scripts\python.exe tools/render_cursor_projection.py --check
+.\.venv\Scripts\python.exe -m pytest tests/acceptance/test_repo_authority.py tests/acceptance/test_generated_surfaces.py tests/acceptance/test_frozen_boundaries.py -q
+```
+
+Deferred target-state spec maintenance:
+
+```powershell
+.\.venv\Scripts\python.exe tools/verify_scoped_canon.py
+.\.venv\Scripts\python.exe tools/verify_frozen_surfaces.py
 ```
 
 ## Documentation Synchronization Rule
@@ -466,6 +498,10 @@ Important surfaces:
 - `control_plane/task_state.py` manages durable task artifacts
 - `.agents/skills/*` are canonical repo-local skills
 - `.cursor/*` remains generated compatibility output
+
+Secrets for Codex and the OpenAI stack are loaded by `control_plane/runtime_env.py`. Prefer non-empty `CODEX_API_KEY` or `OPENAI_API_KEY` in your environment (see `runtime_environment.required_secret_env` in `AGENTS.md` for order). If neither is set, the runtime falls back to the legacy file path `legacy_secret_file` (default `.env/Codex_API_KEY`). On Windows, `python tools/migrate_repo_env.py` can copy previously repo-local `.env` secrets into the user environment and rewrite `.env` with comments only.
+
+After policy or loader-manifest changes, run `uv run python tools/control_plane.py trust-policy` and `uv run python tools/control_plane.py validate-bootstrap`. Regenerate Cursor shims with `uv run python tools/render_cursor_projection.py` when `AGENTS.md` or projection sources change.
 
 ## License
 

@@ -1,4 +1,4 @@
-.PHONY: sync sync-market-data test test-market-data verify verify-market-data cleanup-audit e2e schema-guard docs-sync-guard pit-guard compat-guard bridge-guard verification-guard regenerate check-generated lint all
+.PHONY: sync sync-market-data test test-market-data verify verify-target-state-specs verify-market-data cleanup-audit e2e schema-guard docs-sync-guard pit-guard compat-guard bridge-guard verification-guard regenerate check-generated lint all
 
 sync:
 	uv sync --group dev --group control-plane --group ingestion --group ingestion-test
@@ -13,9 +13,17 @@ test-market-data:
 
 verify:
 	uv run python tools/verify_runtime.py
+	uv run python tools/verify_repo_authority.py
+	uv run python tools/verify_generated_surfaces.py
 	uv run python tools/verify_tracked_locks.py
-	uv run python tools/verify_frozen_surfaces.py
+	uv run python tools/verify_frozen_boundaries.py
+	uv run python tools/verify_plan_demotions.py
 	uv run python tools/audit_file_registry.py
+	uv run python -m pytest tests/acceptance/test_repo_authority.py tests/acceptance/test_generated_surfaces.py tests/acceptance/test_frozen_boundaries.py -q
+
+verify-target-state-specs:
+	uv run python tools/verify_scoped_canon.py
+	uv run python tools/verify_frozen_surfaces.py
 
 cleanup-audit:
 	uv run python tools/audit_file_registry.py

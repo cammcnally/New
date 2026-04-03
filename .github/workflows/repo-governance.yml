@@ -1,0 +1,25 @@
+name: repo-governance
+
+on:
+  workflow_call:
+
+jobs:
+  governance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+      - run: uv sync --group dev --group control-plane
+      - run: uv run python --version
+      - run: uv run python tools/verify_repo_authority.py
+      - run: uv run python tools/verify_generated_surfaces.py
+      - run: uv run python tools/verify_frozen_boundaries.py
+      - run: uv run python tools/render_cursor_projection.py --check
+      - run: uv run python tools/verify_plan_demotions.py
+      - run: uv run python -m pytest tests/acceptance/test_repo_authority.py -q
+      - run: uv run python -m pytest tests/acceptance/test_generated_surfaces.py -q
+      - run: uv run python -m pytest tests/acceptance/test_frozen_boundaries.py -q

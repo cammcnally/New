@@ -1,0 +1,15 @@
+---
+description: Forbid bare/global pytest entrypoints; require repo-local invocation.
+alwaysApply: true
+---
+
+# No Global Pytest
+
+Do not use bare `pytest` as the canonical repo entrypoint.
+
+Allowed forms:
+
+- `.venv\Scripts\python.exe -m pytest ...`
+- `.venv/bin/python -m pytest ...`
+
+If a command or doc surface still uses bare `pytest`, fix it.
