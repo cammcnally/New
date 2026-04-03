@@ -158,6 +158,22 @@ The control plane is local-first, Phase 1-safe, and fail-closed.
     "runtime-cutover-3119": {
       "path": ".agents/skills/runtime-cutover-3119/SKILL.md",
       "purpose": "Exact Python 3.11.9 cutover workflow."
+ },
+ "ml-trading-pipeline-architecture": {
+ "path": ".agents/skills/ml-trading-pipeline-architecture/SKILL.md",
+ "purpose": "Keep architecture aligned to the end-to-end ML trading pipeline outcome."
+ },
+ "financial-ml-research-guardrails": {
+ "path": ".agents/skills/financial-ml-research-guardrails/SKILL.md",
+ "purpose": "Preserve financial-ML research integrity in features, labels, validation, and benchmark use."
+ },
+ "strategy-report-bundle": {
+ "path": ".agents/skills/strategy-report-bundle/SKILL.md",
+ "purpose": "Produce reproducible, benchmark-aware report bundles for strategy runs."
+ },
+ "parallel-agent-handoff": {
+ "path": ".agents/skills/parallel-agent-handoff/SKILL.md",
+ "purpose": "Keep multiple agents aligned on shared contracts, outputs, and dependencies."
     }
   },
   "dependency_policy": {
@@ -281,3 +297,12 @@ The control plane is local-first, Phase 1-safe, and fail-closed.
 - The orchestrator must refuse to start if bootstrap integrity checks fail or if the external bootstrap pin is missing or mismatched.
 - The default trace mode is minimal capture. Richer payload capture requires an explicit policy override.
 - `docs/archive/*` and `.local/control_plane/*` are non-authoritative evidence. They must never influence runtime decisions.
+
+## Cursor Cloud Specific Instructions
+
+- On Linux or Cursor Cloud, set `PIPELINE_BASE_PATH=/workspace` before running `Pipeline.py`; the default Windows `E:/stock_csvs_AI-Perspective/NEW` path will not resolve there.
+- For the smoke panel `panel_ohlcv_smoke_tier1.csv`, use shorter walk-forward windows such as `--outer_train_months 6 --outer_test_months 3`; the default `36/6` windows require the full `panel_ohlcv_clean.csv`.
+- Canonical test commands remain `uv run python -m pytest -q`, `uv run python -m pytest -m helper`, and `uv run python -m pytest -m smoke`. See `Makefile` for `make sync`, `make test`, and `make verify`.
+- Known pre-existing failures on `main` are not environment problems: loader-manifest hash mismatches, missing generated `.cursor/` files, and a missing `subagent/` directory can break a small set of tests.
+- `tools/verify_runtime.py` may report a false negative under `uv` because `sys.executable` resolves to a `uv`-managed interpreter path outside the repo root even when the runtime is the correct Python 3.11.9 workspace environment.
+- `tools/verify_tracked_locks.py` may report a bootstrap-lock loader-manifest hash mismatch on `main`; treat that as pre-existing repo state unless you are explicitly repairing bootstrap integrity.

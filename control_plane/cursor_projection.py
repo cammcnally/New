@@ -111,6 +111,10 @@ def build_cursor_projection(project_root: Path) -> Mapping[str, str]:
                 - `pipeline-runner-recovery`
                 - `control-plane-bootstrap-repair`
                 - `runtime-cutover-3119`
+                - `ml-trading-pipeline-architecture`
+                - `financial-ml-research-guardrails`
+                - `strategy-report-bundle`
+                - `parallel-agent-handoff`
 
                 Do not treat `.cursor/skills/*` as canonical.
                 """

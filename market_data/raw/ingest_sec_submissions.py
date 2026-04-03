@@ -71,6 +71,25 @@ def _load_ciks(settings: IngestionSettings) -> list[str]:
         )
         return sorted(df.get_column("cik").to_list())
 
+    raw_tickers_path = raw_path("sec", "company_tickers", settings) / "company_tickers.json"
+    if raw_tickers_path.exists():
+        universe_symbols = set(_load_universe_symbols(settings))
+        if not universe_symbols:
+            log.warning("SEC submissions ingest: raw company_tickers present but no bounded universe symbols found")
+            return []
+
+        payload = json.loads(raw_tickers_path.read_text(encoding="utf-8"))
+        rows_obj = payload.get("data", payload)
+        if isinstance(rows_obj, dict):
+            ciks = {
+                str(value.get("cik_str", "")).strip().zfill(10)
+                for value in rows_obj.values()
+                if isinstance(value, dict)
+                and str(value.get("ticker", "")).upper() in universe_symbols
+                and value.get("cik_str") not in (None, "")
+            }
+            return sorted(cik for cik in ciks if cik)
+
     sm_path = silver_path("security_master", settings)
     if sm_path.exists():
         import polars as pl

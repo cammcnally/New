@@ -206,7 +206,7 @@ def export_panel(
             "Dataset manifest indicates compatibility_fallback_used=true; "
             "refusing to export a canonical downstream compatibility panel."
         )
-    panel.to_pandas().to_csv(out, index=False)
+    panel.write_csv(out)
     benchmark_surface_path = _build_benchmark_surface(
         settings=settings,
         output_panel_path=out,

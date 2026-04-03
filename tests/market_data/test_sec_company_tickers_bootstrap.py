@@ -143,3 +143,48 @@ def test_sec_raw_cik_loaders_prefer_bronze_company_tickers(test_settings) -> Non
 
     assert ingest_submissions._load_ciks(test_settings) == ["0000000001", "0000000002"]
     assert ingest_facts._load_ciks(test_settings) == ["0000000001", "0000000002"]
+
+
+def test_sec_raw_cik_loaders_fallback_to_raw_company_tickers_when_bronze_missing(test_settings) -> None:
+    instrument_master = pl.DataFrame(
+        {
+            "instrument_id": [1, 2],
+            "asset_type": ["equity", "equity"],
+            "security_type": ["common_stock", "common_stock"],
+            "canonical_symbol": ["AAA", "BBB"],
+            "legal_name": ["AAA Corp", "BBB Corp"],
+            "exchange": ["NYSE", "NYSE"],
+            "primary_country": ["US", "US"],
+            "currency": ["USD", "USD"],
+            "is_active_current": [True, True],
+            "first_seen_date": [date(2020, 1, 1), date(2020, 1, 1)],
+            "last_seen_date": [date(2024, 1, 10), date(2024, 1, 10)],
+            "source_priority": [1, 1],
+            "created_at_utc": [_utc(2024, 1, 1), _utc(2024, 1, 1)],
+            "updated_at_utc": [_utc(2024, 1, 1), _utc(2024, 1, 1)],
+        }
+    ).with_columns(
+        pl.col("source_priority").cast(pl.Int32),
+        pl.col("created_at_utc").cast(pl.Datetime("us", "UTC")),
+        pl.col("updated_at_utc").cast(pl.Datetime("us", "UTC")),
+    )
+    write_parquet(
+        instrument_master,
+        silver_path("instrument_master", test_settings) / "instrument_master.parquet",
+    )
+
+    raw_dir = raw_path("sec", "company_tickers", test_settings)
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    (raw_dir / "company_tickers.json").write_text(
+        json.dumps(
+            {
+                "0": {"ticker": "AAA", "cik_str": 1, "title": "AAA Corp"},
+                "1": {"ticker": "BBB", "cik_str": 2, "title": "BBB Corp"},
+                "2": {"ticker": "ZZZ", "cik_str": 999, "title": "ZZZ Corp"},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert ingest_submissions._load_ciks(test_settings) == ["0000000001", "0000000002"]
+    assert ingest_facts._load_ciks(test_settings) == ["0000000001", "0000000002"]
