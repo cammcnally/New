@@ -17,11 +17,13 @@ Canonical governance and semantics live in:
 - `docs/data_contract.md`
 - `docs/phase1-research-spec.md`
 - `docs/phase1-execution-roadmap.md`
+- `docs/end_to_end_trading_system_architecture.md`
 
 Authority boundaries:
 
 - `docs/data_contract.md` is normative for the market-data layer.
 - `docs/phase1-research-spec.md` and `docs/phase1-execution-roadmap.md` are normative for downstream Phase 1 research semantics.
+- `docs/end_to_end_trading_system_architecture.md` consolidates the broader future-state downstream trading-system design without broadening current frozen Phase 1 claims by itself.
 - `README.md` is the operator-facing architecture and workflow guide. It must stay synchronized with code and contract changes.
 
 If these surfaces disagree, update the stale document rather than inferring a new architecture from outdated text.
@@ -139,6 +141,7 @@ Primary repo surfaces:
 - `lineage/`
 - narrow `dvc.yaml` tracking the compatibility export (`panel_ohlcv_clean.csv` + sidecar manifest) via `tools/run_repo_e2e.py --stop-after export_panel` (not broad `pipeline_outputs/*` snapshots)
 - `gx/` for top-level artifact validation where still useful
+- `docs/end_to_end_trading_system_architecture.md` as the consolidated target-state downstream architecture blueprint
 
 ### Deferred But Planned
 
@@ -161,6 +164,7 @@ The repo may claim:
 - the research pipeline consumes a derived/exported compatibility surface
 - downstream Phase 1 semantics remain frozen unless changed through the normative governance path
 - threshold-family correction remains limited to the existing Phase 1 boundary
+- the repo now carries a consolidated target-state architecture blueprint for broader downstream trading-system integration in `docs/end_to_end_trading_system_architecture.md`
 
 The repo may not claim:
 

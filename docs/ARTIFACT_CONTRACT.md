@@ -4,6 +4,8 @@ Every important experiment or strategy run should emit a deterministic artifact 
 
 This document is cross-cutting. It does not replace [docs/data_contract.md](e:\stock_csvs_AI-Perspective\NEW\docs\data_contract.md), which remains the authority for market-data surfaces and schema semantics.
 
+For the broader post-Phase-1 downstream architecture that motivates richer artifact and reporting requirements, also see `docs/end_to_end_trading_system_architecture.md`.
+
 ## Minimum fields for a run
 
 - strategy_name

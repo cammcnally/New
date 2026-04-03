@@ -23,6 +23,8 @@ The repository must support the full chain:
 7. produce institutional-grade reports and machine-readable artifacts
 8. fail clearly when assumptions or contracts are violated
 
+The broader target-state downstream architecture that fills in this chain at the system-design level is documented in `docs/end_to_end_trading_system_architecture.md`. That document is the repo-native consolidation point for the expanded cross-sectional equity architecture, while `docs/phase1-research-spec.md` remains the frozen authority for current Phase 1 claim boundaries.
+
 ## Non-negotiable invariants
 
 - No lookahead leakage.

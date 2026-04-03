@@ -39,3 +39,4 @@ no Python code parsed their contents at runtime. They have been moved to
 | `control_plane/loader_manifest.json` | SHA256 integrity hashes for control-plane files | `control_plane/policy_loader.py` (`verify_loader_manifest`) |
 | `repo_control/file_registry.yaml` | Authoritative file vitality and cleanup registry | `tools/audit_file_registry.py`, `tools/report_cleanup_candidates.py`, `tools/verify_frozen_surfaces.py` (existence + non-empty registry) |
 | `docs/repo_cleanup_policy.md` | Human-readable explanation of cleanup classes and rules | `tools/verify_frozen_surfaces.py` (existence via frozen surfaces manifest) |
+| `docs/end_to_end_trading_system_architecture.md` | Consolidated future-state downstream trading-system architecture; merges the expanded three-part system brief without changing frozen Phase 1 semantics by itself | Human-governed documentation surface referenced by `README.md`, `docs/PROJECT_OUTCOME.md`, and `docs/phase1-execution-roadmap.md` |
