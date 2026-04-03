@@ -126,7 +126,7 @@ The control plane is local-first, Phase 1-safe, and fail-closed.
     "required_python_version": "3.11.9",
     "required_venv_path": ".venv",
     "env_bootstrap_script": "tools/enter_e_drive_env.ps1",
-    "env_sync_command": "uv sync --group dev --group control-plane",
+    "env_sync_command": "uv sync --group dev --group control-plane --group ingestion --group ingestion-test",
     "required_secret_env": [
       "CODEX_API_KEY",
       "OPENAI_API_KEY"
@@ -158,22 +158,26 @@ The control plane is local-first, Phase 1-safe, and fail-closed.
     "runtime-cutover-3119": {
       "path": ".agents/skills/runtime-cutover-3119/SKILL.md",
       "purpose": "Exact Python 3.11.9 cutover workflow."
- },
- "ml-trading-pipeline-architecture": {
- "path": ".agents/skills/ml-trading-pipeline-architecture/SKILL.md",
- "purpose": "Keep architecture aligned to the end-to-end ML trading pipeline outcome."
- },
- "financial-ml-research-guardrails": {
- "path": ".agents/skills/financial-ml-research-guardrails/SKILL.md",
- "purpose": "Preserve financial-ML research integrity in features, labels, validation, and benchmark use."
- },
- "strategy-report-bundle": {
- "path": ".agents/skills/strategy-report-bundle/SKILL.md",
- "purpose": "Produce reproducible, benchmark-aware report bundles for strategy runs."
- },
- "parallel-agent-handoff": {
- "path": ".agents/skills/parallel-agent-handoff/SKILL.md",
- "purpose": "Keep multiple agents aligned on shared contracts, outputs, and dependencies."
+    },
+    "ml-trading-pipeline-architecture": {
+      "path": ".agents/skills/ml-trading-pipeline-architecture/SKILL.md",
+      "purpose": "Keep architecture aligned to the end-to-end ML trading pipeline outcome."
+    },
+    "financial-ml-research-guardrails": {
+      "path": ".agents/skills/financial-ml-research-guardrails/SKILL.md",
+      "purpose": "Preserve financial-ML research integrity in features, labels, validation, and benchmark use."
+    },
+    "strategy-report-bundle": {
+      "path": ".agents/skills/strategy-report-bundle/SKILL.md",
+      "purpose": "Produce reproducible, benchmark-aware report bundles for strategy runs."
+    },
+    "parallel-agent-handoff": {
+      "path": ".agents/skills/parallel-agent-handoff/SKILL.md",
+      "purpose": "Keep multiple agents aligned on shared contracts, outputs, and dependencies."
+    },
+    "systematic-debugging": {
+      "path": ".agents/skills/systematic-debugging/SKILL.md",
+      "purpose": "Root-cause debugging workflow for failures, inconsistencies, and repository integrity issues."
     }
   },
   "dependency_policy": {
@@ -297,6 +301,66 @@ The control plane is local-first, Phase 1-safe, and fail-closed.
 - The orchestrator must refuse to start if bootstrap integrity checks fail or if the external bootstrap pin is missing or mismatched.
 - The default trace mode is minimal capture. Richer payload capture requires an explicit policy override.
 - `docs/archive/*` and `.local/control_plane/*` are non-authoritative evidence. They must never influence runtime decisions.
+- Many `.cursor/rules/*.mdc` files are **regenerated** by `python tools/render_cursor_projection.py` and are compatibility shims (they defer to `AGENTS.md` and Phase 1 docs). **Hand-maintained** rules add IDE norms (for example `agent-code-self-review.mdc`, `mandatory-root-cause-debugging.mdc`, `pit-and-no-leakage.mdc`, and the optional overnight pack: `overnight-e2e-repair.mdc`, `no-fake-e2e-success.mdc`, `critical-path-priority.mdc`). See **Agent policy** and [`ops/overnight/README.md`](ops/overnight/README.md). Regenerate projections after changing the JSON policy block or `skills_registry`.
+- **Windows (local): E-drive checkout, not C-drive persistence.** Prefer opening this repo from `E:\stock_csvs_AI-Perspective\NEW` (or another **E:** path). Do not leave new durable project work on **C:** (including `%USERPROFILE%\.cursor\worktrees\`); move strays to **E:** and follow `.cursor/rules/agent-code-self-review.mdc`. **GitHub and Linux CI** do not use Windows drive letters; `linux_ci_is_release_authority` remains unchanged—this bullet governs **local Windows/Cursor** layout only.
+
+## Agent policy (Cursor and Codex)
+
+This section supplements the **canonical JSON policy block** above. The runtime reads that JSON directly; this markdown does not broaden or replace it. Frozen Phase 1 research semantics remain in `docs/phase1-research-spec.md` and `docs/phase1-execution-roadmap.md`. Hand-maintained Cursor rules and this section are the primary **IDE** behavioral layer for the invariants below; Codex and other agents should follow the same norms when touching the repo.
+
+### Hardline semantics (no hook enforcement)
+
+In this repository, **"hardline" means instruction-mandatory and contract-validated, not hook-enforced.** Agents must treat repo rules and, when doing overnight repair, [`ops/overnight/e2e_contract.json`](ops/overnight/e2e_contract.json) as **binding** even though pre-commit hooks, MCP orchestration, or CI may not mechanically block every bad edit. Protection is: narrow success definitions, explicit forbidden shortcuts, `ops/overnight/check_e2e_contract.py`, and human review. See [`ops/overnight/README.md`](ops/overnight/README.md).
+
+### Mandatory root-cause debugging
+
+When any bug, failing check, inconsistency, broken assumption, environment problem, flaky behavior, or suspicious output is encountered, treat it as in scope if it can affect correctness, reproducibility, stability, safety, or repository integrity.
+
+Required behavior:
+
+- diagnose before editing
+- read and follow `.agents/skills/systematic-debugging/SKILL.md` when available (`.cursor/skills/systematic-debugging/SKILL.md` is a non-canonical projection)
+- identify root cause with evidence
+- fix the root cause at the correct layer
+- validate the repair before proceeding
+- report symptom, root cause, files changed, validations, and residual risk
+
+Do not ignore, suppress, or work around material defects just because they are outside the initially assigned task.
+
+### Fix on encounter (short-term)
+
+For day-to-day and bounded repair work, **remediate problems you encounter** while executing the task—root-cause fix, narrow validation, handoff with evidence. **Logging or backlog entries alone are not a substitute** for fixes unless the item is blocked by policy, missing human approval, or an external dependency; then document the blocker and the smallest unblocking step.
+
+### PIT and leakage control
+
+Treat point-in-time correctness as mandatory for all market data, feature, label, validation, and backtest work.
+
+Never:
+
+- use future information in features or labels
+- use naive joins for publication-timed data
+- use revised values where vintage data is required
+- accept survivorship bias where historical realism matters
+
+### Deterministic validation
+
+Use the smallest meaningful deterministic validation first, then broader checks as needed.
+Do not claim a fix without validation evidence.
+
+### Minimal safe changes
+
+Prefer the narrowest correct fix.
+Do not perform unrelated rewrites under cover of bug fixing.
+
+### Data contract discipline
+
+Treat schemas, keys, dtypes, timestamp semantics, and null policies as contracts.
+Fail loudly on contract violations that could corrupt downstream outputs.
+
+### Repo drift control
+
+Follow canonical repo constraints, runtime, build path, and acceptance gates.
+Do not invent alternative canonical behavior or bypass governance for convenience.
 
 ## Cursor Cloud Specific Instructions
 

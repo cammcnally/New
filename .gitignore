@@ -12,7 +12,8 @@ env/
 node_modules/
 
 # IDE / editor
-.cursor/
+# Ignore .cursor contents except tracked projection paths (cannot re-include children if `.cursor/` is ignored).
+.cursor/*
 !.cursor/rules/
 !.cursor/rules/**
 !.cursor/agents/
@@ -20,6 +21,9 @@ node_modules/
 .idea/
 *.swp
 *.swo
+
+# Overnight agent attempt payloads (local only)
+ops/overnight/out/
 
 # Pipeline run outputs (regenerable)
 pipeline_outputs/

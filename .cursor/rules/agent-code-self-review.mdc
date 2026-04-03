@@ -1,0 +1,46 @@
+---
+description: E-drive-only persistence (no C:); repo path canonical; mandatory self-review before completion.
+alwaysApply: true
+---
+
+# Storage (non-negotiable)
+
+- **Never** persist new work to **`C:\`**: no new repos, rules, caches, datasets, exports, logs, venvs, or agent artifacts under `C:\Users\...`, `%USERPROFILE%\.cursor\worktrees\`, `Program Files`, or any other C: path.
+- **Canonical repo workspace** for this project: **`E:\stock_csvs_AI-Perspective\NEW\`**. Tracked code, `.cursor/rules`, `.agents`, docs, and tests live here.
+- **Caches and temp** for this repo (when not in-repo under `.local` or `E:\stock_csvs_AI-Perspective\caches\` per `.vscode/settings.json`) must still be on **E:**, never C:.
+- **`E:\CursorData\`** is allowed for **Cursor IDE user profile** data (extensions, global `projects`, plugins). That is not repository source code. Do not copy that tree into the repo.
+- If you find project-related files on **C:** (old worktrees, stray rules, copies), **move** them under **`E:\stock_csvs_AI-Perspective\NEW\`** (or another agreed **`E:\...`** path) and fix references; do not leave duplicates on C:.
+- **`E:\CursorData\.cursor\rules\agent-code-self-review.mdc`** is a **hard link** to this file (same inode). Edit only from the repo path unless you understand link semantics.
+
+Pipeline and research outputs remain governed by **`AGENTS.md`**, Phase 1 docs, and existing **E:** artifact policy (`e-drive-artifacts.mdc`).
+
+# Agent code self-review (Cursor)
+
+Operational steps for the in-IDE agent. Does not replace `AGENTS.md`, Phase 1 docs, or control-plane policy. If anything conflicts, canonical repo policy wins.
+
+## After you change code or config (before the final user message)
+
+1. **Re-read what you edited**  
+   Open the modified regions again (or use diff context) and check: logic errors, wrong identifiers, off-by-one, missing branches, incorrect defaults, and call-site consistency.
+
+2. **Run IDE diagnostics on touched paths**  
+   Use workspace linter/diagnostic tools on every file you edited; fix new issues you introduced.
+
+3. **Run the smallest meaningful command check**  
+   When the project has a relevant test, typecheck, or script for the changed surface, run that targeted check—not a blind full suite unless the task requires it. If you skip a check, say what was skipped and why.
+
+4. **Optional verifier subagent (non-trivial work)**  
+   For multi-file edits, security-sensitive paths, tricky concurrency, or anything easy to get wrong, launch a **read-only** verification pass via the **Task** tool with `subagent_type: verifier` and `readonly: true`. Give it: goal, files touched, expected behavior, and what to flag (bugs, leaks, missing tests, policy drift). Incorporate or rebut its findings before finishing.
+
+## In your handoff to the user
+
+State explicitly:
+
+- What you verified (re-read, lints, commands, verifier subagent—or which steps were not applicable).
+- Outcome: clean, issues fixed, or remaining risk/blocker.
+
+## Do not
+
+- Call the task “done” or “fixed” without stating what was verified.
+- Treat a quick skim as sufficient when the change is broad or high-risk.
+- Save new durable project files under **`C:\`**.
