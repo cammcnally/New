@@ -1,0 +1,42 @@
+{
+  "schema_version": "1.0.0",
+  "description": "Seed backlog for critical-path E2E enablement. Replace or extend with a human-maintained queue; ids must stay stable for run_repro.py.",
+  "issues": [
+    {
+      "id": "E2E-001",
+      "priority": 1,
+      "title": "Authoritative dev E2E reaches export_panel with real artifacts",
+      "critical_path": true,
+      "repro_hint": "uv run python tools/run_repo_e2e.py --stop-after export_panel",
+      "success_criteria": "ops/overnight/check_e2e_contract.py --mode dev-green passes after run; run_status shows export_panel passed",
+      "notes": "Requires data lake, canonical build, universe_membership for default export, and dataset manifest canonical_export_ready."
+    },
+    {
+      "id": "E2E-002",
+      "priority": 2,
+      "title": "Bridge verifier accepts only hydrated panel + canonical manifest flags",
+      "critical_path": true,
+      "repro_hint": "uv run python tools/verify_market_data_bridge.py --panel-path panel_ohlcv_clean.csv --require-manifest",
+      "success_criteria": "Bridge passes on freshly exported panel; fails on LFS pointer without hydration",
+      "notes": "Aligns with CI checkout lfs: true; local clones need git lfs pull."
+    },
+    {
+      "id": "E2E-003",
+      "priority": 3,
+      "title": "Docs sync passes for material market-data edits",
+      "critical_path": true,
+      "repro_hint": "uv run python tools/verify_market_data_docs_sync.py",
+      "success_criteria": "Exit 0; README, data_contract, COMMANDS updated when material files change",
+      "notes": "Guards against silent doc drift vs contracts."
+    },
+    {
+      "id": "E2E-004",
+      "priority": 4,
+      "title": "Full E2E through finalize_status (stretch)",
+      "critical_path": false,
+      "repro_hint": "uv run python tools/run_repo_e2e.py",
+      "success_criteria": "run_status status completed; phase1_sanity_check artifacts present under pipeline_outputs",
+      "notes": "Do not claim until DEV_EXPORT_SPINE_GREEN is stable; requires panel and Phase 1 config suitable for full windows."
+    }
+  ]
+}

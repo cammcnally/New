@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import shutil
 import subprocess
 import sys
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -122,6 +124,29 @@ def _run_subprocess(command: list[str], *, stage: str, settings: IngestionSettin
     if result.returncode != 0:
         raise RuntimeError(f"{stage} failed with exit code {result.returncode}. See {log_path}")
     return str(log_path)
+
+
+@contextmanager
+def _capture_market_data_logs(*, stage: str, settings: IngestionSettings) -> Any:
+    log_path = _log_path(settings, stage)
+    logger = logging.getLogger("market_data")
+    handler = logging.FileHandler(log_path, encoding="utf-8")
+    handler.setFormatter(
+        logging.Formatter(
+            "%(asctime)s | %(name)s | %(levelname)s | %(message)s",
+            datefmt="%Y-%m-%dT%H:%M:%S",
+        )
+    )
+    previous_level = logger.level
+    if previous_level == logging.NOTSET or previous_level > logging.INFO:
+        logger.setLevel(logging.INFO)
+    logger.addHandler(handler)
+    try:
+        yield str(log_path)
+    finally:
+        logger.removeHandler(handler)
+        handler.close()
+        logger.setLevel(previous_level)
 
 
 def _dependency_sync_command(*, no_cache: bool = False) -> list[str]:
@@ -766,11 +791,17 @@ def run_e2e(
             if stage == "dependency_sync":
                 log_path, command = _run_dependency_sync(settings)
             elif stage == "canonical_market_data":
-                watermark = read_watermark(settings)
-                if watermark is None:
-                    run_bootstrap(settings=settings, start_date=bootstrap_start_date, end_date=today_utc().isoformat())
-                else:
-                    run_sync(settings=settings)
+                with _capture_market_data_logs(stage=stage, settings=settings) as captured_log_path:
+                    log_path = captured_log_path
+                    watermark = read_watermark(settings)
+                    if watermark is None:
+                        run_bootstrap(
+                            settings=settings,
+                            start_date=bootstrap_start_date,
+                            end_date=today_utc().isoformat(),
+                        )
+                    else:
+                        run_sync(settings=settings)
                 dataset_manifest = _write_dataset_manifest(settings)
                 primary_output = str(dataset_manifest_path(settings))
                 outputs = {

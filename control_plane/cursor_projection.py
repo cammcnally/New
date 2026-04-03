@@ -38,6 +38,15 @@ def build_cursor_projection(project_root: Path) -> Mapping[str, str]:
     classifications = [str(name) for name in payload.get("task_classifications", {}).keys()]
     skills_registry = payload.get("skills_registry", {})
     classification_list = "\n".join(f"- `{item}`" for item in classifications)
+    skill_registry_bullets = "\n".join(f"- `{name}`" for name in sorted(skills_registry.keys()))
+    invoke_skills_body = (
+        "Canonical skill authority lives in:\n\n"
+        "- `AGENTS.md`\n"
+        "- `.agents/skills/*`\n\n"
+        "Registry keys (`AGENTS.md` → `skills_registry`; each mirrors to `.cursor/skills/<skill-folder>/` per the `path` entry):\n\n"
+        f"{skill_registry_bullets}\n\n"
+        "Do not treat `.cursor/skills/*` as canonical.\n"
+    )
 
     rules: dict[str, str] = {
         ".cursor/rules/phase1-governance-guardrails.mdc": _mdc(
@@ -96,29 +105,7 @@ def build_cursor_projection(project_root: Path) -> Mapping[str, str]:
         ".cursor/rules/invoke-skills-on-pipeline-tasks.mdc": _mdc(
             "Invoke Skills On Pipeline Tasks",
             "Compatibility shim for the canonical skills registry.",
-            dedent(
-                """\
-                Canonical skill authority lives in:
-
-                - `AGENTS.md`
-                - `.agents/skills/*`
-
-                Local Cursor skill aliases currently project these canonical entries:
-
-                - `phase1-validation-runbook`
-                - `pipeline-test-author`
-                - `artifact-schema-inspector`
-                - `pipeline-runner-recovery`
-                - `control-plane-bootstrap-repair`
-                - `runtime-cutover-3119`
-                - `ml-trading-pipeline-architecture`
-                - `financial-ml-research-guardrails`
-                - `strategy-report-bundle`
-                - `parallel-agent-handoff`
-
-                Do not treat `.cursor/skills/*` as canonical.
-                """
-            ),
+            invoke_skills_body,
         ),
         ".cursor/rules/no-global-pytest.mdc": dedent(
             """\

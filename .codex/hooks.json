@@ -22,8 +22,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run python tools/verify_market_data.py",
-            "statusMessage": "Running market-data verification bundle"
+            "command": "uv run python -m pytest -q tests/market_data/test_verify_market_data_bridge.py tests/market_data/test_verify_market_data_bundle.py",
+            "statusMessage": "Running market-data verifier regression tests"
           },
           {
             "type": "command",

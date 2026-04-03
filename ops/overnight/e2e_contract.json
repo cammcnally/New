@@ -1,0 +1,78 @@
+{
+  "schema_version": "1.0.0",
+  "contract_id": "DEV_EXPORT_SPINE_GREEN",
+  "description": "Development-scale honest run through export + bridge verification (not a substitute for full Pipeline.py finalize unless extended).",
+  "hardline_semantics": "In this repository, hardline means instruction-mandatory and contract-validated, not hook-enforced. Agents must treat this file and repo rules as binding even when no pre-commit, MCP, or CI gate enforces them.",
+  "repo_authoritative_stages": [
+    "dependency_sync",
+    "canonical_market_data",
+    "verify_market_data",
+    "export_panel",
+    "pipeline_run",
+    "finalize_status"
+  ],
+  "dev_green_required_stages": [
+    "dependency_sync",
+    "canonical_market_data",
+    "verify_market_data",
+    "export_panel"
+  ],
+  "canonical_cli": {
+    "executable": "uv",
+    "argv_prefix": ["run", "python", "tools/run_repo_e2e.py"],
+    "default_bootstrap_start_date": "2010-01-01",
+    "default_panel_path": "panel_ohlcv_clean.csv",
+    "default_pipeline_output_dir": "pipeline_outputs",
+    "dev_stop_after": "export_panel"
+  },
+  "example_dev_command": "uv run python tools/run_repo_e2e.py --stop-after export_panel",
+  "example_full_command": "uv run python tools/run_repo_e2e.py",
+  "path_templates": {
+    "repo_root": ".",
+    "data_lake_manifests": "data_lake/manifests",
+    "run_status_json": "data_lake/manifests/run_status.json",
+    "run_state_json": "data_lake/manifests/repo_e2e_state.json",
+    "verification_summary_json": "data_lake/manifests/verification_summary.json",
+    "dataset_manifest": "data_lake/manifests/dataset_manifest.json",
+    "panel_csv": "panel_ohlcv_clean.csv",
+    "panel_manifest_suffix": ".manifest.json"
+  },
+  "artifact_requirements_dev_green": [
+    {
+      "id": "panel_csv",
+      "path": "panel_ohlcv_clean.csv",
+      "must_exist": true,
+      "must_not_be_git_lfs_pointer": true,
+      "min_bytes": 500
+    },
+    {
+      "id": "panel_sidecar_manifest",
+      "path": "panel_ohlcv_clean.csv.manifest.json",
+      "must_exist": true,
+      "json_keys_required": ["dataset_build_id", "export_panel_version_id", "universe_filter_applied"]
+    },
+    {
+      "id": "run_status",
+      "path": "data_lake/manifests/run_status.json",
+      "must_exist_after_claimed_dev_green": true,
+      "note": "partial_progress is valid for dev-green when all dev_green_required_stages are passed (e.g. --stop-after export_panel)."
+    }
+  ],
+  "forbidden_shortcuts": [
+    "Weakening tests, assertions, or verifiers to force green.",
+    "Bypassing schema, PIT, compat, or bridge guards in code paths used for canonical claims.",
+    "Editing this contract or e2e_definition.md to match broken behavior instead of fixing behavior.",
+    "Treating pre-existing artifacts as proof of tonight's run without a fresh run_status / stage log correlation.",
+    "Stubbing or no-oping canonical_market_data, verify_market_data, or export_panel while claiming DEV_E2E_GREEN.",
+    "Using export-latest --skip-universe-filter for canonical DEV_E2E_GREEN without explicit out-of-band approval and without documenting universe_filter_applied=false."
+  ],
+  "post_touch_validation_commands": [
+    "uv run python ops/overnight/check_e2e_contract.py --mode dev-green",
+    "uv run python tools/verify_market_data_docs_sync.py"
+  ],
+  "references": [
+    "docs/implementation_runbook.md",
+    "docs/e2e-run-blockers.md",
+    "market_data/orchestration/e2e.py"
+  ]
+}

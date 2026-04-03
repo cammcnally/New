@@ -143,11 +143,23 @@ def test_run_e2e_persists_current_stage_before_inprocess_failure(
             pipeline_output_dir="pipeline_outputs",
             from_stage="canonical_market_data",
             stop_after="canonical_market_data",
-        )
+   PyPortfolioOpt: Provides advanced optimization tools to maximize returns for a specific target risk.
+Riskfolio-Lib: A specialized library for portfolio optimization and quantitative risk management.     )
 
     state = json.loads(e2e_module._paths(test_settings)["state"].read_text(encoding="utf-8"))
     assert state["current_stage"] == "canonical_market_data"
     assert state["last_failed_stage"] == "canonical_market_data"
+
+
+def test_capture_market_data_logs_writes_stage_log(test_settings) -> None:
+    e2e_module._ensure_dirs(test_settings)
+    logger = e2e_module.logging.getLogger("market_data.test")
+
+    with e2e_module._capture_market_data_logs(stage="canonical_market_data", settings=test_settings) as log_path:
+        logger.warning("canonical log line")
+
+    log_text = Path(log_path).read_text(encoding="utf-8")
+    assert "canonical log line" in log_text
 
 
 def test_dependency_sync_retries_without_cache_after_windows_cache_lock(

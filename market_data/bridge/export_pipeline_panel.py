@@ -8,6 +8,11 @@ date-effective source symbol as the downstream compatibility label, computes
 ``is_incomplete_session`` from the trading calendar, validates the export
 contract, and writes a CSV matching the downstream compatibility contract.
 
+Rows are restricted to ``(sid, trade_date)`` pairs present in
+``silver/universe_membership`` with ``is_member`` true for the requested
+``universe`` (default ``all_us_common_daily``), matching ``gold_daily_panel``
+scope and keeping full-range exports memory-bounded.
+
 Timestamp semantics: ``timestamp_utc`` is set to the actual NYSE/NASDAQ
 session close time in UTC for each trade_date (typically 20:00 or 21:00 UTC
 depending on daylight saving).
@@ -16,8 +21,6 @@ from __future__ import annotations
 
 from datetime import date
 from pathlib import Path
-from typing import Optional
-
 import polars as pl
 
 from market_data.common.calendars import session_open_close, is_early_close, trading_days
@@ -145,27 +148,65 @@ def export_panel(
     start_date: str,
     end_date: str,
     universe: str = "all_us_common_daily",
+    skip_universe_filter: bool = False,
 ) -> Path:
     sd = parse_date(start_date)
     ed = parse_date(end_date)
-    _ = universe
     out = (Path(output_path) if output_path else Path("panel_ohlcv_clean.csv")).resolve()
 
     prices_path = silver_path("prices_1d_unadjusted", settings)
     calendar_path = silver_path("trading_calendar", settings)
+    membership_path = silver_path("universe_membership", settings)
 
     _check_prerequisite("prices_1d_unadjusted", prices_path)
     _check_prerequisite("trading_calendar", calendar_path)
+    if not skip_universe_filter:
+        _check_prerequisite("universe_membership", membership_path)
+
+    dataset_build_id = current_dataset_build_id(settings)
+    if not dataset_build_id:
+        raise FileNotFoundError(
+            "Required dataset manifest not found. "
+            f"Build canonical market_data first so {dataset_manifest_path(settings)} exists."
+        )
+    dataset_manifest = read_manifest(dataset_manifest_path(settings))
+    if not dataset_manifest.get("canonical_export_ready"):
+        raise RuntimeError(
+            "Dataset manifest indicates canonical_export_ready=false; "
+            "refusing to export a downstream compatibility panel."
+        )
+    if dataset_manifest.get("compatibility_fallback_used"):
+        raise RuntimeError(
+            "Dataset manifest indicates compatibility_fallback_used=true; "
+            "refusing to export a canonical downstream compatibility panel."
+        )
 
     prices = read_parquet(prices_path).filter(
         (pl.col("trade_date") >= sd) & (pl.col("trade_date") <= ed)
     )
+    if skip_universe_filter:
+        log.warning(
+            "export_panel: skip_universe_filter=True; exporting all prices in date range "
+            "(not limited to universe_membership). Not recommended for canonical research exports."
+        )
+        panel_core = prices
+    else:
+        members = (
+            read_parquet(membership_path)
+            .filter(
+                (pl.col("is_member") == True)  # noqa: E712
+                & (pl.col("universe_name") == universe)
+                & (pl.col("trade_date") >= sd)
+                & (pl.col("trade_date") <= ed)
+            )
+            .select("sid", "trade_date")
+        )
+        panel_core = prices.join(members, on=["sid", "trade_date"], how="inner")
 
     close_times = _build_close_times(sd, ed)
 
     panel = (
-        prices
-        .collect()
+        panel_core.collect()
         .join(close_times, on="trade_date", how="left")
         .with_columns(
             pl.col("market_close_utc").alias("timestamp_utc"),
@@ -188,24 +229,40 @@ def export_panel(
         .sort("ticker", "timestamp_utc")
         .unique(subset=["ticker", "timestamp_utc"], keep="first")
     )
+    if panel.height == 0:
+        if skip_universe_filter:
+            raise RuntimeError(
+                "export_panel: empty panel with skip_universe_filter=True; "
+                f"check prices_1d_unadjusted for {start_date=} {end_date=}."
+            )
+        um = read_parquet(membership_path).filter(
+            (pl.col("universe_name") == universe)
+            & (pl.col("trade_date") >= sd)
+            & (pl.col("trade_date") <= ed)
+        ).select("is_member", "trade_date")
+        um_df = um.collect()
+        if um_df.height == 0:
+            extra = "universe_membership has zero rows in the export window for this universe."
+        else:
+            row = um_df.select(
+                pl.len().alias("rows_in_range"),
+                pl.col("is_member").cast(pl.UInt8).sum().alias("is_member_true"),
+                pl.col("trade_date").min().alias("mbr_min"),
+                pl.col("trade_date").max().alias("mbr_max"),
+            ).row(0, named=True)
+            extra = (
+                f"universe_membership in range: rows={row['rows_in_range']}, "
+                f"is_member_true={row['is_member_true']}, "
+                f"trade_date_span=({row['mbr_min']!r}, {row['mbr_max']!r})."
+            )
+        raise RuntimeError(
+            "export_panel: no rows after joining prices_1d_unadjusted to universe_membership "
+            f"(universe={universe!r}, start_date={start_date!r}, end_date={end_date!r}). "
+            f"{extra} "
+            "Rebuild silver universe_membership across the export window (see `market_data.cli silver`), "
+            "or pass skip_universe_filter=True only for emergency compatibility exports."
+        )
     panel = validate_contract_df("export_panel", panel)
-    dataset_build_id = current_dataset_build_id(settings)
-    if not dataset_build_id:
-        raise FileNotFoundError(
-            "Required dataset manifest not found. "
-            f"Build canonical market_data first so {dataset_manifest_path(settings)} exists."
-        )
-    dataset_manifest = read_manifest(dataset_manifest_path(settings))
-    if not dataset_manifest.get("canonical_export_ready"):
-        raise RuntimeError(
-            "Dataset manifest indicates canonical_export_ready=false; "
-            "refusing to export a downstream compatibility panel."
-        )
-    if dataset_manifest.get("compatibility_fallback_used"):
-        raise RuntimeError(
-            "Dataset manifest indicates compatibility_fallback_used=true; "
-            "refusing to export a canonical downstream compatibility panel."
-        )
     panel.write_csv(out)
     benchmark_surface_path = _build_benchmark_surface(
         settings=settings,
@@ -228,6 +285,7 @@ def export_panel(
         }
         if benchmark_surface_path
         else {},
+        universe_filter_applied=not skip_universe_filter,
     )
     export_manifest_path = write_export_manifest(export_manifest, out)
 

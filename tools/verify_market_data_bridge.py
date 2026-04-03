@@ -33,6 +33,13 @@ def _incomplete_session_expr() -> pl.Expr:
 
 def _scan_normalized_export_panel(path: Path) -> pl.LazyFrame:
     """Lazy scan of the export CSV with the same column semantics as the legacy eager loader."""
+    with path.open("r", encoding="utf-8", errors="replace") as handle:
+        first_line = handle.readline().strip()
+    if first_line == "version https://git-lfs.github.com/spec/v1":
+        raise SystemExit(
+            "[bridge] export panel is a Git LFS pointer, not hydrated CSV data. "
+            "Checkout with Git LFS enabled (for GitHub Actions, use `actions/checkout@v4` with `lfs: true`)."
+        )
     lf = pl.scan_csv(path, try_parse_dates=True, infer_schema_length=50_000)
     return lf.with_columns(
         pl.col("timestamp_utc").cast(pl.Datetime("us", "UTC")),
@@ -98,6 +105,7 @@ def run_checks(
     panel_path: str,
     require_manifest: bool = False,
     require_benchmark_artifacts: bool = False,
+    allow_relaxed_universe_export: bool = False,
     data_lake: str | None = None,
     config_dir: str | None = None,
 ) -> int:
@@ -146,6 +154,11 @@ def run_checks(
         raise SystemExit("[bridge] export manifest missing deferred_components")
     if "side_artifacts" not in manifest or not isinstance(manifest["side_artifacts"], dict):
         raise SystemExit("[bridge] export manifest missing side_artifacts")
+    if manifest.get("universe_filter_applied") is False and not allow_relaxed_universe_export:
+        raise SystemExit(
+            "[bridge] export manifest universe_filter_applied=false; "
+            "pass --allow-relaxed-universe-export only if this emergency export is intentional"
+        )
     if require_benchmark_artifacts:
         benchmark_surface = manifest["side_artifacts"].get("benchmark_surface_daily")
         if not benchmark_surface:
@@ -221,12 +234,18 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Fail if benchmark side artifacts are missing from the export manifest",
     )
+    parser.add_argument(
+        "--allow-relaxed-universe-export",
+        action="store_true",
+        help="Allow exports that skipped silver/universe_membership filtering",
+    )
     add_market_data_args(parser)
     args = parser.parse_args(argv)
     return run_checks(
         panel_path=args.panel_path,
         require_manifest=args.require_manifest,
         require_benchmark_artifacts=args.require_benchmark_artifacts,
+        allow_relaxed_universe_export=args.allow_relaxed_universe_export,
         data_lake=args.data_lake,
         config_dir=args.config_dir,
     )

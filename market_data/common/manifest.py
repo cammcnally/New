@@ -163,6 +163,7 @@ def build_export_manifest(
     verification_artifacts: list[dict[str, Any]] | None = None,
     deferred_components: list[str] | None = None,
     side_artifacts: dict[str, str] | None = None,
+    universe_filter_applied: bool = True,
 ) -> dict[str, Any]:
     if not dataset_build_id:
         raise ValueError("dataset_build_id is required for export manifests")
@@ -185,6 +186,7 @@ def build_export_manifest(
         "verification_artifacts": verification_artifacts or [],
         "deferred_components": deferred_components or [],
         "side_artifacts": side_artifacts or {},
+        "universe_filter_applied": universe_filter_applied,
     }
 
 

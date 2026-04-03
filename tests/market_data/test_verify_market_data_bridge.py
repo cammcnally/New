@@ -18,6 +18,33 @@ pytestmark = pytest.mark.ingestion
 _CONFIG_DIR = Path(__file__).resolve().parents[2] / "configs"
 
 
+def _write_universe_membership(
+    test_settings,
+    *,
+    sid: str,
+    trade_date: date,
+    universe: str = "all_us_common_daily",
+) -> None:
+    membership_dir = silver_path("universe_membership", test_settings)
+    membership_dir.mkdir(parents=True, exist_ok=True)
+    membership = pl.DataFrame(
+        {
+            "trade_date": [trade_date],
+            "sid": [sid],
+            "universe_name": [universe],
+            "is_member": [True],
+            "is_primary_listing": [True],
+            "is_common_stock": [True],
+            "price_ok": [True],
+            "liquidity_ok": [True],
+            "age_ok": [True],
+            "status_ok": [True],
+            "eligibility_reason": [""],
+        }
+    )
+    write_parquet(membership, membership_dir / "membership.parquet")
+
+
 def _required_report_paths(test_settings) -> dict[str, str]:
     qa_root = qa_dir(test_settings)
     qa_root.mkdir(parents=True, exist_ok=True)
@@ -101,6 +128,27 @@ def test_bridge_verifier_fails_when_required_panel_is_missing(tmp_path: Path) ->
         )
 
 
+def test_bridge_verifier_rejects_git_lfs_pointer(tmp_path: Path) -> None:
+    panel_path = tmp_path / "panel.csv"
+    panel_path.write_text(
+        "\n".join(
+            [
+                "version https://git-lfs.github.com/spec/v1",
+                "oid sha256:deadbeef",
+                "size 123",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(SystemExit, match="Git LFS pointer"):
+        run_checks(
+            panel_path=str(panel_path),
+            data_lake=str(tmp_path),
+            config_dir=str(_CONFIG_DIR),
+        )
+
+
 def test_bridge_verifier_requires_dataset_manifest_to_register_export_manifest(
     test_settings,
     tmp_path: Path,
@@ -124,6 +172,7 @@ def test_bridge_verifier_requires_dataset_manifest_to_register_export_manifest(
     write_parquet(prices, prices_dir / "prices.parquet")
 
     silver_path("trading_calendar", test_settings).mkdir(parents=True, exist_ok=True)
+    _write_universe_membership(test_settings, sid="S1", trade_date=date(2024, 1, 8))
 
     dataset_manifest_path = manifest_dir(test_settings) / "dataset_manifest.json"
     write_manifest(
@@ -184,6 +233,7 @@ def test_bridge_verifier_can_require_benchmark_side_artifact(
     ).with_columns(pl.col("loaded_at").cast(pl.Datetime("us", "UTC")))
     write_parquet(prices, prices_dir / "prices.parquet")
     silver_path("trading_calendar", test_settings).mkdir(parents=True, exist_ok=True)
+    _write_universe_membership(test_settings, sid="S1", trade_date=date(2024, 1, 8))
     _write_minimal_benchmark_support(test_settings)
 
     dataset_manifest_path = manifest_dir(test_settings) / "dataset_manifest.json"
@@ -246,6 +296,7 @@ def test_bridge_warns_when_dataset_manifest_lacks_domain_gate(
     write_parquet(prices, prices_dir / "prices.parquet")
 
     silver_path("trading_calendar", test_settings).mkdir(parents=True, exist_ok=True)
+    _write_universe_membership(test_settings, sid="S1", trade_date=date(2024, 1, 8))
 
     dataset_manifest_path = manifest_dir(test_settings) / "dataset_manifest.json"
     write_manifest(
@@ -310,6 +361,7 @@ def test_bridge_verifier_fails_when_dataset_manifest_is_not_canonical_ready(
     write_parquet(prices, prices_dir / "prices.parquet")
 
     silver_path("trading_calendar", test_settings).mkdir(parents=True, exist_ok=True)
+    _write_universe_membership(test_settings, sid="S1", trade_date=date(2024, 1, 8))
 
     dataset_manifest_path = manifest_dir(test_settings) / "dataset_manifest.json"
     write_manifest(
@@ -372,6 +424,7 @@ def test_bridge_verifier_normalizes_relative_export_manifest_path(
     write_parquet(prices, prices_dir / "prices.parquet")
 
     silver_path("trading_calendar", test_settings).mkdir(parents=True, exist_ok=True)
+    _write_universe_membership(test_settings, sid="S1", trade_date=date(2024, 1, 8))
 
     dataset_manifest_path = manifest_dir(test_settings) / "dataset_manifest.json"
     write_manifest(

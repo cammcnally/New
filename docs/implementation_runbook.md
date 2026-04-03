@@ -20,6 +20,10 @@ make e2e
 uv run python tools/run_repo_e2e.py
 ```
 
+For a maintained list of common end-to-end failures by stage (symptoms, causes, mitigations), see [e2e-run-blockers.md](e2e-run-blockers.md).
+
+For a **file-only** overnight repair contract (no hooks), see [ops/overnight/README.md](../ops/overnight/README.md), [ops/overnight/e2e_definition.md](../ops/overnight/e2e_definition.md), and [ops/overnight/e2e_contract.json](../ops/overnight/e2e_contract.json).
+
 Verification entrypoints:
 
 ```powershell

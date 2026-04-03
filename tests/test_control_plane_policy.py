@@ -106,7 +106,7 @@ def test_repo_runtime_rejects_non_repo_interpreter(monkeypatch: pytest.MonkeyPat
     policy = load_canonical_policy_payload(PROJECT_ROOT / "AGENTS.md")
     runtime_policy = policy["runtime_environment"]
     monkeypatch.setattr("control_plane.runtime_env.platform.python_version", lambda: "3.11.9")
-    monkeypatch.setattr(sys, "executable", r"C:\Python312\python.exe")
+    monkeypatch.setattr(sys, "executable", r"E:\external_runtimes\Python312\python.exe")
     with pytest.raises(RuntimeEnvironmentError):
         ensure_repo_runtime(PROJECT_ROOT, runtime_policy)
 

@@ -79,6 +79,8 @@ uv run python tools/verify_market_data_bridge.py --panel-path panel_ohlcv_clean.
 uv run python tools/verify_market_data.py
 ```
 
+If the panel was produced with `--skip-universe-filter`, the export manifest sets `universe_filter_applied=false`; add `--allow-relaxed-universe-export` to the bridge command only when that emergency export is intentional (not for canonical research gates).
+
 ### 6. DVC (narrow export spine)
 
 `dvc.yaml` versions only the exported panel CSV and its sidecar manifest. Recreate tracked outputs with a lake that already passes verification:

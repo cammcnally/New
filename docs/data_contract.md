@@ -70,6 +70,7 @@ Required-core surfaces are mandatory for canonical export readiness:
 - canonical instrument identity
 - source-namespace-aware symbol mapping
 - canonical OHLCV
+- silver `universe_membership` for the default export universe (when using the default export path that scopes to `gold_daily_panel`)
 - session and trade-date correctness
 - benchmark/reference coverage required by active downstream logic
 - export-safe compatibility labeling
@@ -102,6 +103,7 @@ Rules:
 | `instrument_master` | `canonical_live` | Canonical identity | Authority for identity, asset/security type, canonical symbol, exchange, and active state |
 | `instrument_symbol_history` | `canonical_live` | Canonical symbol mapping | Authority for source symbol history and effective windows |
 | `prices_1d_unadjusted` | `canonical_live` | Canonical daily price surface | Instrument-ID keyed daily OHLCV surface for downstream canonical builds and exports |
+| `universe_membership` | `canonical_live` | Daily universe eligibility | For each `universe_name` and `trade_date`, marks `is_member` and eligibility flags; default compatibility export inner-joins `(sid, trade_date)` here for `all_us_common_daily` to align with `gold_daily_panel` scope |
 | `benchmark_definitions` | `canonical_live` | Canonical benchmark catalog | Includes stable `benchmark_id` (join key); `symbol` unique; SPY sole primary market benchmark; eleven sector ETFs; ^VIX/VIXY as required context |
 | `benchmark_prices_daily` | `canonical_live` | Benchmark OHLCV slice | Sid-keyed silver slice of `prices_1d_unadjusted` for configured benchmarks; **unadjusted** OHLCV only (no `adj_close`); verified by `tools/verify_market_data_contracts.py` when present |
 | `macro_observations_vintage` | `canonical_live` | PIT vintage storage | Must retain availability timestamps and reject future-available joins |
@@ -322,6 +324,8 @@ Rules:
 - the export bridge may run only when the dataset manifest reports `canonical_export_ready = true`
 - if `compatibility_fallback_used = true`, canonical export must fail closed
 - every material export must have a manifest entry with row count, content hash, deferred-component status, and verification refs
+- default canonical export includes only `(sid, trade_date)` rows present in silver `universe_membership` with `is_member` true for the requested universe (default `all_us_common_daily`); an explicit emergency path may skip this join and must record `universe_filter_applied=false` in the export sidecar manifest
+- `tools/verify_market_data_bridge.py` treats `universe_filter_applied=false` as a fail-closed condition unless the operator passes `--allow-relaxed-universe-export` (canonical gates such as e2e and `make bridge-guard` do not pass that flag)
 
 ## Row State And Export Eligibility
 

@@ -63,8 +63,14 @@ def sync(ctx: click.Context) -> None:
 
 @cli.command("export-latest")
 @click.option("--output", default=None, help="Output CSV path (default: panel_ohlcv_clean.csv)")
+@click.option(
+    "--skip-universe-filter",
+    is_flag=True,
+    default=False,
+    help="Export all symbols in the date range (ignore silver/universe_membership). Emergency use only.",
+)
 @click.pass_context
-def export_latest(ctx: click.Context, output: str | None) -> None:
+def export_latest(ctx: click.Context, output: str | None, skip_universe_filter: bool) -> None:
     """Export latest validated snapshot as Pipeline.py-compatible CSV."""
     log = get_logger("cli.export")
     settings = ctx.obj["settings"]
@@ -77,14 +83,21 @@ def export_latest(ctx: click.Context, output: str | None) -> None:
     export_panel(
         settings=settings, output_path=output,
         start_date=wm["start_date"], end_date=wm["end_date"],
+        skip_universe_filter=skip_universe_filter,
     )
 
 
 @cli.command("export-asof")
 @click.option("--asof-date", required=True, help="Export as of this date YYYY-MM-DD")
 @click.option("--output", default=None, help="Output CSV path")
+@click.option(
+    "--skip-universe-filter",
+    is_flag=True,
+    default=False,
+    help="Export all symbols in the date range (ignore silver/universe_membership). Emergency use only.",
+)
 @click.pass_context
-def export_asof(ctx: click.Context, asof_date: str, output: str | None) -> None:
+def export_asof(ctx: click.Context, asof_date: str, output: str | None, skip_universe_filter: bool) -> None:
     """Export dataset as of a specific date for reproducible testing."""
     log = get_logger("cli.export_asof")
     settings = ctx.obj["settings"]
@@ -97,6 +110,7 @@ def export_asof(ctx: click.Context, asof_date: str, output: str | None) -> None:
     export_panel(
         settings=settings, output_path=output,
         start_date=wm["start_date"], end_date=asof_date,
+        skip_universe_filter=skip_universe_filter,
     )
 
 

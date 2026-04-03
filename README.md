@@ -308,6 +308,8 @@ Each export should carry a sidecar manifest at `<panel>.manifest.json` with `dat
 The bridge now fails closed unless the dataset manifest marks the canonical build `canonical_export_ready = true` and `compatibility_fallback_used = false`.
 Direct `Pipeline.py` runs are valid only when that sidecar exists and carries both build references.
 
+Canonical exports restrict rows to `(sid, trade_date)` pairs present in silver `universe_membership` with `is_member` true for the default universe (`all_us_common_daily`), matching `gold_daily_panel` scope. For emergency compatibility only, `export-latest` / `export-asof` accept `--skip-universe-filter`; the sidecar then records `universe_filter_applied=false`, and `tools/verify_market_data_bridge.py` (including `make bridge-guard`) fails unless you pass `--allow-relaxed-universe-export`.
+
 ### 4. Run The Downstream Research Pipeline
 
 ```powershell
