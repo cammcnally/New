@@ -72,3 +72,7 @@ outputs/
 !.cursor/commands/**
 !.cursor/settings.json
 !.cursor/projection_manifest.json
+!.cursor/environment.json
+!.cursor/install.sh
+!.cursor/start.sh
+!.cursor/terminal.sh
