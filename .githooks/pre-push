@@ -1,0 +1,7 @@
+#!/bin/sh
+# Pass-contract pre-push gate, then full repo verify bundle (Makefile verify equivalent).
+set -eu
+ROOT="$(git rev-parse --show-toplevel)"
+cd "$ROOT"
+uv run pre-commit run --hook-stage pre-push
+exec uv run python tools/run_verify_bundle.py

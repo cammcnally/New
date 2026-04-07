@@ -209,6 +209,15 @@ entries:
     review_required: false
     reason: Operator-facing task entrypoints.
     last_reviewed: "2026-04-02"
+  - path: .pre-commit-config.yaml
+    class: canonical
+    authority: authoritative
+    owner_layer: tooling
+    cleanup_policy: keep
+    regeneration_source: ""
+    review_required: true
+    reason: Repo-local commit and push gates for governance and pass-contract enforcement.
+    last_reviewed: "2026-04-06"
   - path: pyproject.toml
     class: canonical
     authority: authoritative
@@ -454,12 +463,12 @@ entries:
     last_reviewed: "2026-04-02"
   - path: lineage/**
     class: optional_secondary
-    authority: evidence_only
+    authority: authoritative
     owner_layer: pipeline
     cleanup_policy: review_first
-    regeneration_source: optional lineage dependency group and downstream runs
+    regeneration_source: ""
     review_required: true
-    reason: Useful for observability but not primary market-data authority.
+    reason: Optional OpenLineage integration; active when lineage dependency group is installed. Pipeline.py calls run_pipeline_with_optional_lineage at runtime.
     last_reviewed: "2026-04-02"
   - path: mlflow_integration/**
     class: optional_secondary
@@ -472,12 +481,12 @@ entries:
     last_reviewed: "2026-04-02"
   - path: gx/**
     class: optional_secondary
-    authority: generated
+    authority: authoritative
     owner_layer: tooling
     cleanup_policy: review_first
-    regeneration_source: Great Expectations suites and artifact checks
+    regeneration_source: ""
     review_required: true
-    reason: Secondary validation layer; should not become the primary contract authority.
+    reason: Optional GE validation scaffold; expectation suites are hand-authored JSON. No GE runtime invocation exists. CI checks suite structure only.
     last_reviewed: "2026-04-02"
   - path: dagster_pipeline/**
     class: optional_secondary
@@ -533,6 +542,15 @@ entries:
     review_required: true
     reason: Local automation surface that should not outrank canonical docs or runtime contracts.
     last_reviewed: "2026-04-02"
+  - path: panel_ohlcv_smoke_tier1.csv
+    class: compatibility_only
+    authority: compatibility
+    owner_layer: local_runtime
+    cleanup_policy: regenerate
+    regeneration_source: smoke-tier panel export or test fixture
+    review_required: false
+    reason: Small OHLCV panel for smoke tests; not the full clean panel contract surface.
+    last_reviewed: "2026-04-07"
   - path: panel_ohlcv_clean.csv
     class: compatibility_only
     authority: compatibility
@@ -540,16 +558,7 @@ entries:
     cleanup_policy: regenerate
     regeneration_source: python -m market_data.cli export-latest --output panel_ohlcv_clean.csv
     review_required: true
-    reason: Generated compatibility export for downstream consumers.
-    last_reviewed: "2026-04-02"
-  - path: panel_ohlcv_smoke_tier1.csv
-    class: compatibility_only
-    authority: compatibility
-    owner_layer: local_runtime
-    cleanup_policy: regenerate
-    regeneration_source: market-data smoke or bridge workflow
-    review_required: true
-    reason: Generated smoke export used for compatibility and artifact checks.
+    reason: Generated compatibility export for downstream consumers, with research-safe usage classification governed by its sidecar manifest and PIT evidence artifact.
     last_reviewed: "2026-04-02"
   - path: panel_ohlcv_clean.csv.manifest.json
     class: generated
@@ -558,7 +567,16 @@ entries:
     cleanup_policy: regenerate
     regeneration_source: python -m market_data.cli export-latest --output panel_ohlcv_clean.csv
     review_required: true
-    reason: Generated sidecar manifest for the compatibility export.
+    reason: Generated sidecar manifest for the compatibility export, including timing, provenance, raw-vs-adjusted, fold-readiness, and research-safe usage metadata.
+    last_reviewed: "2026-04-02"
+  - path: panel_ohlcv_clean.csv.pit_evidence.json
+    class: generated
+    authority: generated
+    owner_layer: local_runtime
+    cleanup_policy: regenerate
+    regeneration_source: python -m market_data.cli export-latest --output panel_ohlcv_clean.csv
+    review_required: true
+    reason: Generated export-side PIT evidence artifact for the preserved clean-panel family.
     last_reviewed: "2026-04-02"
   - path: .cursor/**
     class: generated
@@ -605,6 +623,15 @@ entries:
     review_required: false
     reason: Downstream runtime outputs and reports.
     last_reviewed: "2026-04-02"
+  - path: pipeline_outputs_*/**
+    class: ignore_runtime_output
+    authority: local_only
+    owner_layer: local_runtime
+    cleanup_policy: delete_on_sight
+    regeneration_source: ad hoc Pipeline.py runs with suffixed output directories
+    review_required: false
+    reason: Suffixed downstream runtime outputs and reports.
+    last_reviewed: "2026-04-07"
   - path: mlruns/**
     class: ignore_runtime_output
     authority: local_only
@@ -623,3 +650,264 @@ entries:
     review_required: false
     reason: Machine-specific local runtime state.
     last_reviewed: "2026-04-02"
+  - path: config/canonical/benchmark_proxy_and_fallback_contract.yaml
+    class: canonical
+    authority: authoritative
+    owner_layer: docs
+    cleanup_policy: keep
+    regeneration_source: ""
+    review_required: false
+    reason: Canonical benchmark proxy and fallback contract for market-data pipeline.
+    last_reviewed: "2026-04-07"
+  - path: configs/ingestion_manifest.yaml
+    class: canonical
+    authority: authoritative
+    owner_layer: market_data
+    cleanup_policy: keep
+    regeneration_source: ""
+    review_required: false
+    reason: Canonical ingestion manifest defining source datasets, tiers, and scheduling.
+    last_reviewed: "2026-04-07"
+  - path: market_data/common/ingestion_manifest.py
+    class: canonical
+    authority: authoritative
+    owner_layer: market_data
+    cleanup_policy: keep
+    regeneration_source: ""
+    review_required: false
+    reason: Runtime loader for the ingestion manifest contract.
+    last_reviewed: "2026-04-07"
+  - path: market_data/common/raw_landing.py
+    class: canonical
+    authority: authoritative
+    owner_layer: market_data
+    cleanup_policy: keep
+    regeneration_source: ""
+    review_required: false
+    reason: Raw-layer landing and sidecar resolver for ingested datasets.
+    last_reviewed: "2026-04-07"
+  - path: market_data/common/raw_artifact_resolver.py
+    class: canonical
+    authority: authoritative
+    owner_layer: market_data
+    cleanup_policy: keep
+    regeneration_source: ""
+    review_required: false
+    reason: Artifact path resolution for raw-layer ingestion outputs.
+    last_reviewed: "2026-04-07"
+  - path: market_data/common/acceptance_gate.py
+    class: canonical
+    authority: authoritative
+    owner_layer: market_data
+    cleanup_policy: keep
+    regeneration_source: ""
+    review_required: false
+    reason: Acceptance gate logic for promotion decisions between pipeline layers.
+    last_reviewed: "2026-04-07"
+  - path: market_data/common/source_state.py
+    class: canonical
+    authority: authoritative
+    owner_layer: market_data
+    cleanup_policy: keep
+    regeneration_source: ""
+    review_required: false
+    reason: Source-level state tracking for ingestion freshness and health.
+    last_reviewed: "2026-04-07"
+  - path: market_data/common/source_status.py
+    class: canonical
+    authority: authoritative
+    owner_layer: market_data
+    cleanup_policy: keep
+    regeneration_source: ""
+    review_required: false
+    reason: Source status summarization used by orchestration pass-fail logic.
+    last_reviewed: "2026-04-07"
+  - path: tools/pass_contract.py
+    class: canonical
+    authority: authoritative
+    owner_layer: tooling
+    cleanup_policy: keep
+    regeneration_source: ""
+    review_required: false
+    reason: Pass-contract enforcement entrypoint for pipeline gating.
+    last_reviewed: "2026-04-07"
+  - path: tools/pass_contract_common.py
+    class: canonical
+    authority: authoritative
+    owner_layer: tooling
+    cleanup_policy: keep
+    regeneration_source: ""
+    review_required: false
+    reason: Shared pass-contract utilities used by enforcement and verification tools.
+    last_reviewed: "2026-04-07"
+  - path: tools/verify_pass_contract.py
+    class: canonical
+    authority: authoritative
+    owner_layer: tooling
+    cleanup_policy: keep
+    regeneration_source: ""
+    review_required: false
+    reason: Verification entrypoint for pass-contract policy compliance.
+    last_reviewed: "2026-04-07"
+  - path: tools/run_pipeline_smoke.py
+    class: canonical
+    authority: authoritative
+    owner_layer: tooling
+    cleanup_policy: keep
+    regeneration_source: ""
+    review_required: false
+    reason: Pipeline smoke-test runner for quick validation.
+    last_reviewed: "2026-04-07"
+  - path: tools/run_overnight_control_loop.py
+    class: canonical
+    authority: authoritative
+    owner_layer: tooling
+    cleanup_policy: keep
+    regeneration_source: ""
+    review_required: false
+    reason: Overnight pipeline control loop for automated daily runs.
+    last_reviewed: "2026-04-07"
+  - path: tools/backfill_raw_sidecars.py
+    class: canonical
+    authority: authoritative
+    owner_layer: tooling
+    cleanup_policy: keep
+    regeneration_source: ""
+    review_required: false
+    reason: Backfill utility for raw-layer sidecar metadata files.
+    last_reviewed: "2026-04-07"
+  - path: ops/**
+    class: canonical
+    authority: authoritative
+    owner_layer: tooling
+    cleanup_policy: keep
+    regeneration_source: ""
+    review_required: true
+    reason: Operational scripts and overnight control-loop infrastructure.
+    last_reviewed: "2026-04-07"
+  - path: .github/workflows/_pipeline-smoke.yml
+    class: canonical
+    authority: authoritative
+    owner_layer: ci
+    cleanup_policy: keep
+    regeneration_source: ""
+    review_required: true
+    reason: CI pipeline smoke-test workflow.
+    last_reviewed: "2026-04-07"
+  - path: reports/**
+    class: ignore_runtime_output
+    authority: local_only
+    owner_layer: local_runtime
+    cleanup_policy: delete_on_sight
+    regeneration_source: pipeline and pass-contract runs
+    review_required: false
+    reason: Generated pipeline reports and pass-contract output.
+    last_reviewed: "2026-04-07"
+  - path: market_data/orchestration/canonical_identity.py
+    class: canonical
+    authority: authoritative
+    owner_layer: market_data
+    cleanup_policy: keep
+    regeneration_source: ""
+    review_required: true
+    reason: Orchestration semantics version and canonical entrypoint strings for E2E fingerprinting.
+    last_reviewed: "2026-04-07"
+  - path: market_data/common/atomic_json.py
+    class: canonical
+    authority: authoritative
+    owner_layer: market_data
+    cleanup_policy: keep
+    regeneration_source: ""
+    review_required: false
+    reason: Atomic JSON writer for durable orchestration state and summaries.
+    last_reviewed: "2026-04-07"
+  - path: tools/verify_orchestration_authority.py
+    class: canonical
+    authority: authoritative
+    owner_layer: tooling
+    cleanup_policy: keep
+    regeneration_source: ""
+    review_required: false
+    reason: Fail-closed AST wiring checks for canonical E2E and sync orchestration.
+    last_reviewed: "2026-04-07"
+  - path: tests/market_data/test_orchestration_authority.py
+    class: canonical
+    authority: authoritative
+    owner_layer: tests
+    cleanup_policy: keep
+    regeneration_source: ""
+    review_required: false
+    reason: Regression tests for single-authority orchestration and provenance fields.
+    last_reviewed: "2026-04-07"
+  - path: .agents/skills/stooq-source-handling/SKILL.md
+    class: canonical
+    authority: authoritative
+    owner_layer: agents
+    cleanup_policy: keep
+    regeneration_source: ""
+    review_required: false
+    reason: Stooq supplemental source handling checklist for agents.
+    last_reviewed: "2026-04-07"
+  - path: .cursor/rules/stooq_source_policy.mdc
+    class: generated_shims
+    authority: evidence_only
+    owner_layer: ide
+    cleanup_policy: keep
+    regeneration_source: control_plane/cursor_projection.py passthrough for tracked file
+    review_required: false
+    reason: IDE-projected Stooq policy shim; canonical text lives under .agents/skills when in conflict.
+    last_reviewed: "2026-04-07"
+  - path: .githooks/**
+    class: canonical
+    authority: authoritative
+    owner_layer: tooling
+    cleanup_policy: keep
+    regeneration_source: ""
+    review_required: true
+    reason: Repo-scoped Git hooks (core.hooksPath); validation and optional auto-push gating.
+    last_reviewed: "2026-04-07"
+  - path: artifacts/repo_inventory/**
+    class: optional_secondary
+    authority: evidence_only
+    owner_layer: tooling
+    cleanup_policy: keep
+    regeneration_source: tools/generate_repo_inventory.py
+    review_required: false
+    reason: Machine-generated repo inventory artifacts and README; excludes .repo_runtime backups by policy.
+    last_reviewed: "2026-04-07"
+  - path: .repo_runtime/**
+    class: ignore_runtime_output
+    authority: local_only
+    owner_layer: local_runtime
+    cleanup_policy: delete_on_sight
+    regeneration_source: local mirror backups and runtime debris
+    review_required: false
+    reason: Non-authoritative ignored subtree for git mirror clones and local runtime; never stage.
+    last_reviewed: "2026-04-07"
+  - path: tools/setup_repo_git_hooks.ps1
+    class: canonical
+    authority: authoritative
+    owner_layer: tooling
+    cleanup_policy: keep
+    regeneration_source: ""
+    review_required: false
+    reason: Configures core.hooksPath to .githooks on Windows.
+    last_reviewed: "2026-04-07"
+  - path: tools/setup_repo_git_hooks.sh
+    class: canonical
+    authority: authoritative
+    owner_layer: tooling
+    cleanup_policy: keep
+    regeneration_source: ""
+    review_required: false
+    reason: Configures core.hooksPath to .githooks for Git Bash/WSL.
+    last_reviewed: "2026-04-07"
+  - path: tools/generate_repo_inventory.py
+    class: canonical
+    authority: authoritative
+    owner_layer: tooling
+    cleanup_policy: keep
+    regeneration_source: ""
+    review_required: false
+    reason: Generates tracked/untracked/ignored-summary repo inventory under artifacts/repo_inventory/.
+    last_reviewed: "2026-04-07"

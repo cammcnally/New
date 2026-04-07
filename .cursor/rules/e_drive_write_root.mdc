@@ -1,0 +1,128 @@
+---
+description: Hard fail on any write outside the approved E-drive repo root
+globs: ["**/*"]
+alwaysApply: true
+---
+
+# Filesystem Write Root — Mandatory, fail-closed
+
+## Non-negotiable rule
+
+For this repository, every file write must occur only under the approved repo root:
+
+`E:\stock_csvs_AI-Perspective\NEW\`
+
+Any attempt to create, modify, export, download, clone, unpack, render, cache, log, or otherwise write a file outside that root is forbidden.
+
+## Explicitly forbidden
+
+Do not write to any path on `C:\`, including but not limited to:
+
+- `C:\Users\...`
+- Desktop, Downloads, Documents
+- `%TEMP%`, `%TMP%`
+- AppData, Local, Roaming, ProgramData
+- tool default output folders
+- implicit temp/cache/state folders
+- any relative path that resolves outside `E:\stock_csvs_AI-Perspective\NEW\`
+
+## Applies to everything
+
+This rule applies to:
+
+- source files
+- generated code
+- reports
+- manifests
+- artifacts
+- logs
+- caches
+- temp files
+- downloaded files
+- extracted archives
+- test outputs
+- benchmark outputs
+- state files
+- retry manifests
+- any other filesystem writes
+
+## Required behavior before any write-capable action
+
+Before running any command or tool that may write files, you must determine and state:
+
+1. exact working directory
+2. exact files expected to be created or modified
+3. exact output directories
+4. exact temp/cache/state directories, if any
+
+Before any write-capable command, declare the exact intended write paths; after execution, declare the exact actual write paths; any mismatch or any out-of-root write is a hard failure.
+
+If any of those paths are missing, ambiguous, relative-from-unknown-cwd, tool-default, or outside `E:\stock_csvs_AI-Perspective\NEW\`, stop and fail closed.
+
+## Working directory lock
+
+All commands must run with the working directory set to:
+
+`E:\stock_csvs_AI-Perspective\NEW\`
+
+or a subdirectory within it.
+
+Never rely on editor defaults, shell defaults, or tool defaults.
+
+## Explicit output paths only
+
+Every write-capable command must use explicit output paths under the approved repo root.
+
+Do not rely on:
+
+- default download locations
+- default export locations
+- default temp directories
+- unspecified cache directories
+- unspecified artifact directories
+
+## Temp/cache/state redirection
+
+If a tool uses temp, cache, state, or staging directories, they must be redirected under the repo root, for example:
+
+- `E:\stock_csvs_AI-Perspective\NEW\.tmp\`
+- `E:\stock_csvs_AI-Perspective\NEW\.cache\`
+- `E:\stock_csvs_AI-Perspective\NEW\state\`
+- `E:\stock_csvs_AI-Perspective\NEW\artifacts\`
+
+Do not allow temp/cache/state writes to fall back to `C:\` or user-profile directories.
+
+## Symlink and indirection rule
+
+A path is forbidden if it appears to be under the repo root but actually resolves elsewhere through symlinks, junctions, environment expansion, or tool indirection.
+
+Validate final resolved write locations, not just surface strings.
+
+## Hard failure rule
+
+If you cannot guarantee that all writes stay under:
+
+`E:\stock_csvs_AI-Perspective\NEW\`
+
+you must stop and fail closed.
+
+Do not proceed.
+Do not justify it as tool behavior.
+Do not accept partial success.
+Do not “clean it up later.”
+
+## Post-execution proof requirement
+
+After any write-capable action, report:
+
+1. exact files created
+2. exact files modified
+3. exact directories written to
+4. confirmation that every write remained under `E:\stock_csvs_AI-Perspective\NEW\`
+5. confirmation that no `C:\` write occurred
+
+If you cannot provide that proof, the task is a failure.
+
+## Severity
+
+Any write outside the approved E-drive repo root is a severity-1 compliance failure and must be treated as a defect.

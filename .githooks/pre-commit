@@ -1,0 +1,6 @@
+#!/bin/sh
+# Repo-scoped hook: delegates to pre-commit (ruff, YAML, pass-contract pre-commit, etc.).
+set -eu
+ROOT="$(git rev-parse --show-toplevel)"
+cd "$ROOT"
+exec uv run pre-commit run --hook-stage pre-commit

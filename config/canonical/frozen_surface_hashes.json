@@ -2,7 +2,7 @@
   "version": 1,
   "entries": {
     "Pipeline.py": {
-      "sha256": "6b7336db0b553bbfa9c883f828ee093d371bfd89da4f56f3c134d8f0abe237a3",
+      "sha256": "cb7551d9066089b5520cc42250631c91f1bf6d2472b813d1ca24883ec3409957",
       "allowed_change_categories": [
         "manifest_hookup",
         "compatibility_artifact_path_hookup",
@@ -92,7 +92,7 @@
       ]
     },
     "tests/test_phase1_helpers.py": {
-      "sha256": "7a3cb17e6234fa281cd6bde688c9ad13b17fe3359a3b031198ad0789484b5b81",
+      "sha256": "d27f09a2ec9bf3ec386c2167bd06c2e4681034b2480e17e02a4d63c7b73c683d",
       "allowed_change_categories": [
         "manifest_hookup",
         "compatibility_artifact_path_hookup",
@@ -133,6 +133,20 @@
         "manifest_hookup",
         "compatibility_artifact_path_hookup",
         "benchmark_side_artifact_consumption",
+        "approved_bug_fix"
+      ]
+    },
+    "config/canonical/acceptance_status_contract.yaml": {
+      "sha256": "a25b4c95bdee76505e144373c4ba28a24c1430e8c2daafced3b5fb9ac84822ef",
+      "allowed_change_categories": [
+        "approved_vocabulary_extension",
+        "approved_bug_fix"
+      ]
+    },
+    "config/canonical/identity_and_timing_contract.yaml": {
+      "sha256": "88874c7549139b89e0ca1c9706597927ad0507700de248f69c44dd720fef9080",
+      "allowed_change_categories": [
+        "approved_semantic_clarification",
         "approved_bug_fix"
       ]
     }

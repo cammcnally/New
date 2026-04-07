@@ -1,0 +1,47 @@
+# Repo-local hooks; run: uv run pre-commit install
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.9
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+  - repo: local
+    hooks:
+      - id: verify-yaml-json-validity
+        name: verify YAML/JSON validity
+        entry: uv run python tools/verify_yaml_json_validity.py
+        language: system
+        files: \.(json|ya?ml)$
+      - id: verify-no-overwrite-raw-paths
+        name: verify no overwrite-style raw path writes
+        entry: uv run python tools/verify_no_overwrite_raw_paths.py
+        language: system
+        pass_filenames: false
+      - id: verify-orchestration-authority
+        name: verify orchestration authority wiring
+        entry: uv run python tools/verify_orchestration_authority.py
+        language: system
+        pass_filenames: false
+      - id: verify-semantic-contracts
+        name: verify semantic contracts
+        entry: uv run python tools/verify_semantic_contracts.py
+        language: system
+        pass_filenames: false
+      - id: verify-sources-topology
+        name: verify sources topology only
+        entry: uv run python tools/verify_sources_topology.py
+        language: system
+        pass_filenames: false
+      - id: verify-pass-contract-pre-commit
+        name: verify pass contract pre-commit gate
+        entry: uv run python tools/verify_pass_contract.py --pre-commit
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+      - id: verify-pass-contract-pre-push
+        name: verify pass contract pre-push gate
+        entry: uv run python tools/verify_pass_contract.py --pre-push
+        language: system
+        pass_filenames: false
+        stages: [pre-push]

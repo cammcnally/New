@@ -1,0 +1,36 @@
+{
+  "schema_version": "1.0.0",
+  "report_status": "draft",
+  "created_at": "",
+  "closed_at": "",
+  "issue_id": "<ISSUE_ID>",
+  "objective": "<OBJECTIVE>",
+  "planned_files": [],
+  "protected_or_frozen_surface_touch": {
+    "declared": false,
+    "paths": [],
+    "reason": ""
+  },
+  "acceptance_criteria": [],
+  "acceptance_criteria_results": [],
+  "baseline_snapshot": {
+    "captured_at": "",
+    "dirty_paths": [],
+    "file_states": {}
+  },
+  "files_changed": [],
+  "plain_english_diff_summary": [],
+  "commands_run": [],
+  "command_results": [],
+  "artifacts_produced": [],
+  "unresolved_items": [],
+  "not_touched": [],
+  "separate_approval_needed": [],
+  "protected_surface_drift_check": {
+    "unexpected_drift": false,
+    "paths": [],
+    "reason": ""
+  },
+  "final_gate_decision": "",
+  "final_gate_reason": ""
+}

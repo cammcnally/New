@@ -1,0 +1,46 @@
+---
+description: Repo-level governance: E-drive writes, git safety, validation, audit discipline.
+alwaysApply: true
+---
+
+# Repo Governance And Sync
+
+This `.cursor` file is generated compatibility output only.
+Primary governing files for this concern are `AGENTS.md`, `docs/phase1-research-spec.md`, `docs/phase1-execution-roadmap.md`, and `README.md`.
+Do not use this file to add or redefine repo rules.
+
+## Write root
+
+All durable writes stay under the approved repo root on **E:** (`E:\stock_csvs_AI-Perspective\NEW\`). No shadow repos, mirrors, or worktrees outside that root.
+
+## Deletions and structure
+
+Do not delete ambiguous or unclassified files. No casual wide merges or repo-structure rewrites unless explicitly approved in canonical docs.
+
+## Git remotes
+
+Never use `git push --mirror` for publishing. Force-push only with `git push --force-with-lease` for controlled history sync on your branch, never as a blind default.
+
+## Validation before push
+
+Hooks and CI own verification. Do not bypass pre-commit, pre-push, or `make verify` without an explicit documented exception.
+
+## Pass contract (repo-local)
+
+Governed work is sequenced under `docs/governance/AGENT_PASS_CONTRACT.md`. Use `tools/pass_contract.py start` to open a pass and `tools/pass_contract.py close` to close it; pre-push enforcement applies when hooks are enabled.
+
+## Audit and uncertainty
+
+Uncertain paths are **quarantined or reported** in `docs/repo_audit_log.md`—not silently deleted. Follow `docs/repo_audit_spec.md` for classification. Machine-readable authority remains `config/canonical/repo_authority.yaml` and `repo_control/file_registry.yaml`.
+
+## Branch hygiene
+
+Prefer short-lived branches; default survivor branch is `main` unless policy states otherwise. Remote cleanup uses an explicit logged allowlist—never implicit “delete everything.”
+
+## Large changes
+
+Execute large tasks in **reviewable batches** with validation after each batch.
+
+## Auto-push opt-in
+
+Post-commit auto-push is gated on `REPO_AUTO_PUSH_ENABLED=1` (see `docs/repo_sync_policy.md`).

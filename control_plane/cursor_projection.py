@@ -1,11 +1,42 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 from textwrap import dedent
 from typing import Mapping
 
 from .policy_loader import load_canonical_policy_payload
+
+
+def _git_ls_files_tracked(project_root: Path) -> list[str]:
+    result = subprocess.run(
+        ["git", "ls-files"],
+        cwd=str(project_root),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        return []
+    lines: list[str] = []
+    for line in result.stdout.splitlines():
+        line = line.strip().replace("\\", "/")
+        if line:
+            lines.append(line)
+    return lines
+
+
+def _merge_tracked_cursor_passthrough(project_root: Path, projection: dict[str, str]) -> None:
+    """Include hand-maintained tracked .cursor paths so verify_generated_surfaces stays green."""
+    for rel in _git_ls_files_tracked(project_root):
+        path = project_root / rel
+        if not path.is_file():
+            continue
+        if rel.startswith(".cursor/plans/") and rel.endswith(".md"):
+            projection[rel] = path.read_text(encoding="utf-8").rstrip() + "\n"
+        elif rel == ".cursor/rules/stooq_source_policy.mdc":
+            projection[rel] = path.read_text(encoding="utf-8").rstrip() + "\n"
 
 PROJECTION_RENDER_INPUTS = [
     "AGENTS.md",
@@ -60,6 +91,49 @@ def build_cursor_projection(project_root: Path) -> Mapping[str, str]:
     classification_list = "\n".join(f"- `{item}`" for item in classifications)
 
     rules: dict[str, str] = {
+        ".cursor/rules/00-repo-governance-and-sync.mdc": _mdc(
+            "Repo Governance And Sync",
+            "Repo-level governance: E-drive writes, git safety, validation, audit discipline.",
+            dedent(
+                """\
+                ## Write root
+
+                All durable writes stay under the approved repo root on **E:** (`E:\\stock_csvs_AI-Perspective\\NEW\\`). No shadow repos, mirrors, or worktrees outside that root.
+
+                ## Deletions and structure
+
+                Do not delete ambiguous or unclassified files. No casual wide merges or repo-structure rewrites unless explicitly approved in canonical docs.
+
+                ## Git remotes
+
+                Never use `git push --mirror` for publishing. Force-push only with `git push --force-with-lease` for controlled history sync on your branch, never as a blind default.
+
+                ## Validation before push
+
+                Hooks and CI own verification. Do not bypass pre-commit, pre-push, or `make verify` without an explicit documented exception.
+
+                ## Pass contract (repo-local)
+
+                Governed work is sequenced under `docs/governance/AGENT_PASS_CONTRACT.md`. Use `tools/pass_contract.py start` to open a pass and `tools/pass_contract.py close` to close it; pre-push enforcement applies when hooks are enabled.
+
+                ## Audit and uncertainty
+
+                Uncertain paths are **quarantined or reported** in `docs/repo_audit_log.md`—not silently deleted. Follow `docs/repo_audit_spec.md` for classification. Machine-readable authority remains `config/canonical/repo_authority.yaml` and `repo_control/file_registry.yaml`.
+
+                ## Branch hygiene
+
+                Prefer short-lived branches; default survivor branch is `main` unless policy states otherwise. Remote cleanup uses an explicit logged allowlist—never implicit “delete everything.”
+
+                ## Large changes
+
+                Execute large tasks in **reviewable batches** with validation after each batch.
+
+                ## Auto-push opt-in
+
+                Post-commit auto-push is gated on `REPO_AUTO_PUSH_ENABLED=1` (see `docs/repo_sync_policy.md`).
+                """
+            ),
+        ),
         ".cursor/rules/phase1-governance-guardrails.mdc": _mdc(
             "Phase 1 Governance Guardrails",
             "Compatibility shim for canonical Phase 1 guardrails.",
@@ -103,6 +177,138 @@ def build_cursor_projection(project_root: Path) -> Mapping[str, str]:
                 """
             ),
         ),
+        ".cursor/rules/e_drive_write_root.mdc": dedent(
+            r"""
+            ---
+            description: Hard fail on any write outside the approved E-drive repo root
+            globs: ["**/*"]
+            alwaysApply: true
+            ---
+
+            # Filesystem Write Root — Mandatory, fail-closed
+
+            ## Non-negotiable rule
+
+            For this repository, every file write must occur only under the approved repo root:
+
+            `E:\stock_csvs_AI-Perspective\NEW\`
+
+            Any attempt to create, modify, export, download, clone, unpack, render, cache, log, or otherwise write a file outside that root is forbidden.
+
+            ## Explicitly forbidden
+
+            Do not write to any path on `C:\`, including but not limited to:
+
+            - `C:\Users\...`
+            - Desktop, Downloads, Documents
+            - `%TEMP%`, `%TMP%`
+            - AppData, Local, Roaming, ProgramData
+            - tool default output folders
+            - implicit temp/cache/state folders
+            - any relative path that resolves outside `E:\stock_csvs_AI-Perspective\NEW\`
+
+            ## Applies to everything
+
+            This rule applies to:
+
+            - source files
+            - generated code
+            - reports
+            - manifests
+            - artifacts
+            - logs
+            - caches
+            - temp files
+            - downloaded files
+            - extracted archives
+            - test outputs
+            - benchmark outputs
+            - state files
+            - retry manifests
+            - any other filesystem writes
+
+            ## Required behavior before any write-capable action
+
+            Before running any command or tool that may write files, you must determine and state:
+
+            1. exact working directory
+            2. exact files expected to be created or modified
+            3. exact output directories
+            4. exact temp/cache/state directories, if any
+
+            Before any write-capable command, declare the exact intended write paths; after execution, declare the exact actual write paths; any mismatch or any out-of-root write is a hard failure.
+
+            If any of those paths are missing, ambiguous, relative-from-unknown-cwd, tool-default, or outside `E:\stock_csvs_AI-Perspective\NEW\`, stop and fail closed.
+
+            ## Working directory lock
+
+            All commands must run with the working directory set to:
+
+            `E:\stock_csvs_AI-Perspective\NEW\`
+
+            or a subdirectory within it.
+
+            Never rely on editor defaults, shell defaults, or tool defaults.
+
+            ## Explicit output paths only
+
+            Every write-capable command must use explicit output paths under the approved repo root.
+
+            Do not rely on:
+
+            - default download locations
+            - default export locations
+            - default temp directories
+            - unspecified cache directories
+            - unspecified artifact directories
+
+            ## Temp/cache/state redirection
+
+            If a tool uses temp, cache, state, or staging directories, they must be redirected under the repo root, for example:
+
+            - `E:\stock_csvs_AI-Perspective\NEW\.tmp\`
+            - `E:\stock_csvs_AI-Perspective\NEW\.cache\`
+            - `E:\stock_csvs_AI-Perspective\NEW\state\`
+            - `E:\stock_csvs_AI-Perspective\NEW\artifacts\`
+
+            Do not allow temp/cache/state writes to fall back to `C:\` or user-profile directories.
+
+            ## Symlink and indirection rule
+
+            A path is forbidden if it appears to be under the repo root but actually resolves elsewhere through symlinks, junctions, environment expansion, or tool indirection.
+
+            Validate final resolved write locations, not just surface strings.
+
+            ## Hard failure rule
+
+            If you cannot guarantee that all writes stay under:
+
+            `E:\stock_csvs_AI-Perspective\NEW\`
+
+            you must stop and fail closed.
+
+            Do not proceed.
+            Do not justify it as tool behavior.
+            Do not accept partial success.
+            Do not “clean it up later.”
+
+            ## Post-execution proof requirement
+
+            After any write-capable action, report:
+
+            1. exact files created
+            2. exact files modified
+            3. exact directories written to
+            4. confirmation that every write remained under `E:\stock_csvs_AI-Perspective\NEW\`
+            5. confirmation that no `C:\` write occurred
+
+            If you cannot provide that proof, the task is a failure.
+
+            ## Severity
+
+            Any write outside the approved E-drive repo root is a severity-1 compliance failure and must be treated as a defect.
+            """
+        ).lstrip(),
         ".cursor/rules/invoke-auditor-on-audit-request.mdc": _mdc(
             "Invoke Auditor On Audit Request",
             "Compatibility shim for the canonical auditor handoff.",
@@ -526,6 +732,7 @@ def build_cursor_projection(project_root: Path) -> Mapping[str, str]:
     projection.update(agents)
     projection.update(workspace_environment)
     projection.update(skills)
+    _merge_tracked_cursor_passthrough(project_root, projection)
     projection[".cursor/projection_manifest.json"] = (
         json.dumps(build_projection_manifest_payload(project_root), indent=2) + "\n"
     )

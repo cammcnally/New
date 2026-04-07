@@ -1,0 +1,13 @@
+#!/bin/sh
+# Auto-push is opt-in: set REPO_AUTO_PUSH_ENABLED=1 after remote and validation are ready.
+set -eu
+if [ "${REPO_AUTO_PUSH_ENABLED:-}" != "1" ]; then
+  exit 0
+fi
+if ! git symbolic-ref -q HEAD >/dev/null 2>&1; then
+  exit 0
+fi
+ROOT="$(git rev-parse --show-toplevel)"
+cd "$ROOT"
+branch="$(git rev-parse --abbrev-ref HEAD)"
+exec git push -u origin "$branch"

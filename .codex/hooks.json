@@ -6,6 +6,11 @@
         "hooks": [
           {
             "type": "command",
+            "command": "uv run python tools/verify_pass_contract.py --session-start",
+            "statusMessage": "Checking pass contract gate"
+          },
+          {
+            "type": "command",
             "command": "uv run python tools/verify_runtime.py",
             "statusMessage": "Verifying runtime"
           },

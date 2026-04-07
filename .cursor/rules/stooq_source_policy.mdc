@@ -1,0 +1,12 @@
+---
+description: Stooq supplemental OHLCV policy; not canonical required core.
+globs: market_data/raw/ingest_stooq*.py
+alwaysApply: false
+---
+
+# Stooq source policy
+
+- Stooq is supplemental daily and intraday support, not a replacement for required-core Yahoo Finance or Alpha Vantage listing paths.
+- Raw artifacts must use immutable landing plus accepted sidecars before bronze.
+- Do not treat Stooq symbols as canonical identity; silver `sid` rules apply.
+- Skill: `.agents/skills/stooq-source-handling/SKILL.md`

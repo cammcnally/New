@@ -63,3 +63,10 @@ data_lake/
 outputs/
 !outputs/.gitkeep
 
+# Repo runtime: mirror backups and local-only debris (never stage)
+.repo_runtime/
+
+# Repo inventory: keep latest snapshot only in VCS (timestamped runs are local)
+artifacts/repo_inventory/inventory_*.json
+!artifacts/repo_inventory/inventory_latest.json
+

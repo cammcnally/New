@@ -17,6 +17,7 @@ ALLOWED_CLASSES = {
     "normative_doc",
     "compatibility_only",
     "generated",
+    "generated_shims",
     "optional_secondary",
     "deferred_planned",
     "evidence_archive",
@@ -41,6 +42,8 @@ ALLOWED_OWNER_LAYERS = {
     "tests",
     "tooling",
     "local_runtime",
+    "agents",
+    "ide",
 }
 ALLOWED_CLEANUP_POLICIES = {
     "keep",
