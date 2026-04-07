@@ -340,6 +340,8 @@ def build_cursor_projection(project_root: Path) -> Mapping[str, str]:
                 - `financial-ml-research-guardrails`
                 - `strategy-report-bundle`
                 - `parallel-agent-handoff`
+                - `systematic-debugging`
+                - `stooq-source-handling`
 
                 Do not treat `.cursor/skills/*` as canonical.
                 """

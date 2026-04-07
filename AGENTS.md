@@ -178,6 +178,10 @@ The control plane is local-first, Phase 1-safe, and fail-closed.
     "systematic-debugging": {
       "path": ".agents/skills/systematic-debugging/SKILL.md",
       "purpose": "Root-cause debugging workflow for failures, inconsistencies, and repository integrity issues."
+    },
+    "stooq-source-handling": {
+      "path": ".agents/skills/stooq-source-handling/SKILL.md",
+      "purpose": "Stooq supplemental OHLCV handling, fallbacks, and conflict diagnostics aligned to ingestion contracts."
     }
   },
   "dependency_policy": {

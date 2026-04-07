@@ -26,5 +26,7 @@ Local Cursor skill aliases currently project these canonical entries:
 - `financial-ml-research-guardrails`
 - `strategy-report-bundle`
 - `parallel-agent-handoff`
+- `systematic-debugging`
+- `stooq-source-handling`
 
 Do not treat `.cursor/skills/*` as canonical.
