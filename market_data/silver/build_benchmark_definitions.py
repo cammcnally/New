@@ -24,6 +24,7 @@ def build(
 
     rows = [
         {
+            "benchmark_id": item.benchmark_id,
             "group": item.group,
             "symbol": item.symbol,
             "benchmark_type": item.benchmark_type,

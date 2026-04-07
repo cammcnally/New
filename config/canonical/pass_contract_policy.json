@@ -1,0 +1,95 @@
+{
+  "schema_version": "1.0.0",
+  "canonical_spec_path": "docs/governance/AGENT_PASS_CONTRACT.md",
+  "report_template_path": "config/canonical/pass_contract_report_template.json",
+  "governed_scope_source": "config/canonical/repo_authority.yaml",
+  "runtime_state_root": ".local/pass_contract",
+  "report_root": ".local/pass_contract/issues",
+  "active_issue_path": ".local/pass_contract/current_issue.json",
+  "history_log_path": ".local/pass_contract/history.jsonl",
+  "issue_id_pattern": "^[A-Z0-9][A-Z0-9._-]*$",
+  "required_fields": [
+    "issue_id",
+    "objective",
+    "planned_files",
+    "protected_or_frozen_surface_touch",
+    "acceptance_criteria",
+    "files_changed",
+    "plain_english_diff_summary",
+    "commands_run",
+    "command_results",
+    "artifacts_produced",
+    "unresolved_items",
+    "not_touched",
+    "separate_approval_needed",
+    "protected_surface_drift_check",
+    "final_gate_decision"
+  ],
+  "required_scope_fields": [
+    "issue_id",
+    "objective",
+    "planned_files",
+    "protected_or_frozen_surface_touch",
+    "acceptance_criteria"
+  ],
+  "allowed_final_gate_decisions": [
+    "STOP",
+    "GO FOR NEXT ISSUE"
+  ],
+  "protected_surface_patterns": [
+    "AGENTS.md",
+    "docs/governance/**",
+    "config/canonical/**",
+    "control_plane/**",
+    ".github/workflows/**",
+    "pyproject.toml",
+    "uv.lock",
+    "package.json",
+    "package-lock.json",
+    ".pre-commit-config.yaml"
+  ],
+  "blocking_criteria": {
+    "fail_on_missing_scope_declaration": true,
+    "fail_on_mixed_scope": true,
+    "fail_on_missing_evidence": true,
+    "fail_on_missing_unresolved_fields": true,
+    "fail_on_unsatisfied_acceptance_for_go": true,
+    "fail_on_failed_verification_for_go": true,
+    "fail_on_unexpected_protected_surface_drift": true,
+    "fail_on_push_without_closed_go_report": true,
+    "require_close_before_commit_or_push": true
+  },
+  "verification_rules": [
+    {
+      "name": "baseline_verification",
+      "when": "always",
+      "command_contains_any": [
+        "tools/verify_",
+        "python -m pytest",
+        "make verify"
+      ]
+    },
+    {
+      "name": "protected_or_frozen_verification",
+      "when": "protected_or_frozen_touched",
+      "command_contains_any": [
+        "tools/verify_repo_authority.py",
+        "tools/verify_frozen_boundaries.py",
+        "make verify"
+      ]
+    },
+    {
+      "name": "generated_projection_verification",
+      "when_any_changed_matches": [
+        "control_plane/cursor_projection.py",
+        "tools/render_cursor_projection.py",
+        ".cursor/**"
+      ],
+      "command_contains_any": [
+        "tools/render_cursor_projection.py --check",
+        "tools/verify_generated_surfaces.py",
+        "make verify"
+      ]
+    }
+  ]
+}

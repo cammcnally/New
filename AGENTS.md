@@ -126,7 +126,7 @@ The control plane is local-first, Phase 1-safe, and fail-closed.
     "required_python_version": "3.11.9",
     "required_venv_path": ".venv",
     "env_bootstrap_script": "tools/enter_e_drive_env.ps1",
-    "env_sync_command": "uv sync --group dev --group control-plane",
+    "env_sync_command": "uv sync --group dev --group control-plane --group ingestion --group ingestion-test",
     "required_secret_env": [
       "CODEX_API_KEY",
       "OPENAI_API_KEY"
@@ -158,6 +158,30 @@ The control plane is local-first, Phase 1-safe, and fail-closed.
     "runtime-cutover-3119": {
       "path": ".agents/skills/runtime-cutover-3119/SKILL.md",
       "purpose": "Exact Python 3.11.9 cutover workflow."
+    },
+    "ml-trading-pipeline-architecture": {
+      "path": ".agents/skills/ml-trading-pipeline-architecture/SKILL.md",
+      "purpose": "Keep architecture aligned to the end-to-end ML trading pipeline outcome."
+    },
+    "financial-ml-research-guardrails": {
+      "path": ".agents/skills/financial-ml-research-guardrails/SKILL.md",
+      "purpose": "Preserve financial-ML research integrity in features, labels, validation, and benchmark use."
+    },
+    "strategy-report-bundle": {
+      "path": ".agents/skills/strategy-report-bundle/SKILL.md",
+      "purpose": "Produce reproducible, benchmark-aware report bundles for strategy runs."
+    },
+    "parallel-agent-handoff": {
+      "path": ".agents/skills/parallel-agent-handoff/SKILL.md",
+      "purpose": "Keep multiple agents aligned on shared contracts, outputs, and dependencies."
+    },
+    "systematic-debugging": {
+      "path": ".agents/skills/systematic-debugging/SKILL.md",
+      "purpose": "Root-cause debugging workflow for failures, inconsistencies, and repository integrity issues."
+    },
+    "stooq-source-handling": {
+      "path": ".agents/skills/stooq-source-handling/SKILL.md",
+      "purpose": "Stooq supplemental OHLCV handling, fallbacks, and conflict diagnostics aligned to ingestion contracts."
     }
   },
   "dependency_policy": {
@@ -166,7 +190,8 @@ The control plane is local-first, Phase 1-safe, and fail-closed.
       "openai", "openai-agents", "python-dotenv",
       "dagster", "dagster-webserver",
       "great-expectations", "dvc", "dvclive",
-      "mlflow", "feast", "openlineage-python"
+      "mlflow", "feast", "openlineage-python",
+      "alphalens-reloaded"
     ],
     "node_allowlist": [
       "@openai/codex-sdk"
@@ -280,3 +305,148 @@ The control plane is local-first, Phase 1-safe, and fail-closed.
 - The orchestrator must refuse to start if bootstrap integrity checks fail or if the external bootstrap pin is missing or mismatched.
 - The default trace mode is minimal capture. Richer payload capture requires an explicit policy override.
 - `docs/archive/*` and `.local/control_plane/*` are non-authoritative evidence. They must never influence runtime decisions.
+- `.cursor/*` is generated output only. Manual editing is prohibited. Projection parity is enforced by `python tools/render_cursor_projection.py --check`, `tools/verify_generated_surfaces.py`, and `.github/workflows/repo-governance.yml`.
+- `config/canonical/repo_authority.yaml` is the machine-readable source of truth for repo authority status. `tools/verify_repo_authority.py`, `tools/verify_frozen_boundaries.py`, and `tools/verify_plan_demotions.py` enforce that registry.
+- **Windows (local): E-drive checkout, not C-drive persistence.** Prefer opening this repo from `E:\stock_csvs_AI-Perspective\NEW` (or another **E:** path). Do not leave new durable project work on **C:** (including `%USERPROFILE%\.cursor\worktrees\`); move strays to **E:** and follow `.cursor/rules/agent-code-self-review.mdc`. **GitHub and Linux CI** do not use Windows drive letters; `linux_ci_is_release_authority` remains unchanged—this bullet governs **local Windows/Cursor** layout only.
+
+## Repository authority enforcement
+
+The repository operates under one-authority-per-concern.
+
+No repository rule is valid unless it is enforced by canonical files, machine-readable registry, verifier scripts, tests, runtime loaders, or CI failure gates.
+
+### Protected authorities
+The following files are protected authorities. They must not be superseded, contradicted, or semantically replaced by plans, checklists, generated shims, or secondary documents:
+
+- AGENTS.md
+- docs/data_contract.md
+- docs/phase1-research-spec.md
+- docs/phase1-execution-roadmap.md
+- README.md
+
+### Frozen boundary
+The following surfaces are frozen-boundary-only:
+- Pipeline.py
+- tools/phase1_sanity_check.py
+- feature_registry/*
+- tests/test_phase1_*.py
+
+Agents must not perform broad semantic rewrites on frozen-boundary-only surfaces.
+Agents may perform only narrow compatibility-safe changes.
+
+### Generated surfaces
+The following surfaces are generated and non-authoritative:
+- .cursor/*
+- contracts/*.lock.json
+- manifests
+- compatibility exports
+- generated projections
+
+Agents must not treat generated surfaces as sources of truth.
+Agents must regenerate them from canonical sources.
+
+### Duplicate authority rule
+Plans, checklists, work notes, and secondary architecture docs must not remain authoritative.
+Agents must move normative content into the correct canonical file.
+After migration, the duplicate surface must be demoted or archived.
+
+### Deletion rule
+Agents must not delete:
+- protected authorities
+- frozen-boundary surfaces
+- compatibility-critical surfaces still in use
+
+Agents may delete only:
+- stale generated artifacts
+- duplicate authorities already superseded by canonical files
+- obsolete shims replaced by regenerated outputs
+
+All such deletions must pass repository authority verification.
+
+### Separate-approval prohibitions
+The following work is outside the scope of repository-authority enforcement and is prohibited unless the user grants separate explicit approval:
+
+- package-manager replacement, including Poetry adoption or lockfile migration
+- repo-structure migration, including moving `Pipeline.py` into a new package layout or replacing the `market_data/` plus top-level `Pipeline.py` structure
+- broad cleanup, refactoring, modernization, or semantic replacement of `Pipeline.py` or any other frozen-boundary surface
+- target-state alpha-stack implementation that rewrites frozen Phase 1 semantics
+- deletion of protected, frozen, or live-runtime surfaces outside verifier-approved generated-output cleanup
+
+These are scope prohibitions, not suggestions.
+Do not perform them as a side effect, cleanup refactor, opportunistic simplification, or architecture-alignment follow-up while implementing this directive.
+
+Repo-structure migration remains prohibited until all of the following are true:
+
+1. the user explicitly approves that migration by name
+2. the replacement path and compatibility bridge are defined in canonical files first
+3. any affected frozen authorities are updated first where policy requires doc-first change
+4. verifier coverage and CI gates are extended to the new structure before runtime cutover
+
+This prohibition overrides any inferred cleanup, modernization, simplification, or architecture-alignment opportunity.
+
+## Agent policy (Cursor and Codex)
+
+This section supplements the **canonical JSON policy block** above. The runtime reads that JSON directly; this markdown does not broaden or replace it. Frozen Phase 1 research semantics remain in `docs/phase1-research-spec.md` and `docs/phase1-execution-roadmap.md`. Hand-maintained Cursor rules and this section are the primary **IDE** behavioral layer for the invariants below; Codex and other agents should follow the same norms when touching the repo.
+
+### Hardline semantics (no hook enforcement)
+
+In this repository, **"hardline" means instruction-mandatory and contract-validated, not hook-enforced.** Agents must treat repo rules and, when doing overnight repair, [`ops/overnight/e2e_contract.json`](ops/overnight/e2e_contract.json) as **binding** even though pre-commit hooks, MCP orchestration, or CI may not mechanically block every bad edit. Protection is: narrow success definitions, explicit forbidden shortcuts, `ops/overnight/check_e2e_contract.py`, and human review. See [`ops/overnight/README.md`](ops/overnight/README.md).
+
+### Mandatory root-cause debugging
+
+When any bug, failing check, inconsistency, broken assumption, environment problem, flaky behavior, or suspicious output is encountered, treat it as in scope if it can affect correctness, reproducibility, stability, safety, or repository integrity.
+
+Required behavior:
+
+- diagnose before editing
+- read and follow `.agents/skills/systematic-debugging/SKILL.md` when available (`.cursor/skills/systematic-debugging/SKILL.md` is a non-canonical projection)
+- identify root cause with evidence
+- fix the root cause at the correct layer
+- validate the repair before proceeding
+- report symptom, root cause, files changed, validations, and residual risk
+
+Do not ignore, suppress, or work around material defects just because they are outside the initially assigned task.
+
+### Fix on encounter (short-term)
+
+For day-to-day and bounded repair work, **remediate problems you encounter** while executing the task—root-cause fix, narrow validation, handoff with evidence. **Logging or backlog entries alone are not a substitute** for fixes unless the item is blocked by policy, missing human approval, or an external dependency; then document the blocker and the smallest unblocking step.
+
+### PIT and leakage control
+
+Treat point-in-time correctness as mandatory for all market data, feature, label, validation, and backtest work.
+
+Never:
+
+- use future information in features or labels
+- use naive joins for publication-timed data
+- use revised values where vintage data is required
+- accept survivorship bias where historical realism matters
+
+### Deterministic validation
+
+Use the smallest meaningful deterministic validation first, then broader checks as needed.
+Do not claim a fix without validation evidence.
+
+### Minimal safe changes
+
+Prefer the narrowest correct fix.
+Do not perform unrelated rewrites under cover of bug fixing.
+
+### Data contract discipline
+
+Treat schemas, keys, dtypes, timestamp semantics, and null policies as contracts.
+Fail loudly on contract violations that could corrupt downstream outputs.
+
+### Repo drift control
+
+Follow canonical repo constraints, runtime, build path, and acceptance gates.
+Do not invent alternative canonical behavior or bypass governance for convenience.
+
+## Cursor Cloud Specific Instructions
+
+- On Linux or Cursor Cloud, set `PIPELINE_BASE_PATH=/workspace` before running `Pipeline.py`; the default Windows `E:/stock_csvs_AI-Perspective/NEW` path will not resolve there.
+- For the smoke panel `panel_ohlcv_smoke_tier1.csv`, use shorter walk-forward windows such as `--outer_train_months 6 --outer_test_months 3`; the default `36/6` windows require the full `panel_ohlcv_clean.csv`.
+- Canonical test commands remain `uv run python -m pytest -q`, `uv run python -m pytest -m helper`, and `uv run python -m pytest -m smoke`. See `Makefile` for `make sync`, `make test`, and `make verify`.
+- Known pre-existing failures on `main` are not environment problems: loader-manifest hash mismatches, missing generated `.cursor/` files, and a missing `subagent/` directory can break a small set of tests.
+- `tools/verify_runtime.py` may report a false negative under `uv` because `sys.executable` resolves to a `uv`-managed interpreter path outside the repo root even when the runtime is the correct Python 3.11.9 workspace environment.
+- `tools/verify_tracked_locks.py` may report a bootstrap-lock loader-manifest hash mismatch on `main`; treat that as pre-existing repo state unless you are explicitly repairing bootstrap integrity.

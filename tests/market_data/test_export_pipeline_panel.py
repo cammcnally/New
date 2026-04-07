@@ -160,6 +160,60 @@ def test_export_panel_registers_export_manifest_in_dataset_manifest(
     )
 
 
+def test_export_panel_writes_csv_without_pandas_conversion(
+    monkeypatch: pytest.MonkeyPatch,
+    test_settings,
+    tmp_path: Path,
+) -> None:
+    prices_dir = silver_path("prices_1d_unadjusted", test_settings)
+    prices_dir.mkdir(parents=True, exist_ok=True)
+    prices = pl.DataFrame(
+        {
+            "sid": ["S1"],
+            "trade_date": [date(2024, 1, 8)],
+            "open": [10.0],
+            "high": [11.0],
+            "low": [9.0],
+            "close": [10.5],
+            "volume": [1000.0],
+            "source_vendor": ["test"],
+            "source_symbol": ["AAA"],
+            "loaded_at": [datetime(2024, 1, 8, tzinfo=timezone.utc)],
+        }
+    ).with_columns(pl.col("loaded_at").cast(pl.Datetime("us", "UTC")))
+    write_parquet(prices, prices_dir / "prices.parquet")
+
+    silver_path("trading_calendar", test_settings).mkdir(parents=True, exist_ok=True)
+
+    dataset_manifest_path = manifest_dir(test_settings) / "dataset_manifest.json"
+    write_manifest(
+        build_manifest(
+            datasets=[],
+            run_id="dataset-build-1",
+            canonical_export_ready=True,
+            final_status="passed",
+        ),
+        dataset_manifest_path,
+    )
+
+    monkeypatch.setattr(
+        pl.DataFrame,
+        "to_pandas",
+        lambda self, *args, **kwargs: (_ for _ in ()).throw(AssertionError("to_pandas should not be used")),
+    )
+
+    output_path = tmp_path / "panel.csv"
+    export_panel(
+        settings=test_settings,
+        output_path=str(output_path),
+        start_date="2024-01-01",
+        end_date="2024-01-10",
+    )
+
+    exported = pl.read_csv(output_path, try_parse_dates=True)
+    assert exported["ticker"].to_list() == ["AAA"]
+
+
 def test_export_panel_requires_canonical_ready_dataset_manifest(
     test_settings,
     tmp_path: Path,

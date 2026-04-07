@@ -102,7 +102,8 @@ Rules:
 | `instrument_master` | `canonical_live` | Canonical identity | Authority for identity, asset/security type, canonical symbol, exchange, and active state |
 | `instrument_symbol_history` | `canonical_live` | Canonical symbol mapping | Authority for source symbol history and effective windows |
 | `prices_1d_unadjusted` | `canonical_live` | Canonical daily price surface | Instrument-ID keyed daily OHLCV surface for downstream canonical builds and exports |
-| `benchmark_definitions` | `canonical_live` | Canonical benchmark catalog | Versioned semantic-role catalog generated from benchmark configuration and validated for canonical versus proxy rules |
+| `benchmark_definitions` | `canonical_live` | Canonical benchmark catalog | Includes stable `benchmark_id` (join key); `symbol` unique; SPY sole primary market benchmark; eleven sector ETFs; ^VIX/VIXY as required context |
+| `benchmark_prices_daily` | `canonical_live` | Benchmark OHLCV slice | Sid-keyed silver slice of `prices_1d_unadjusted` for configured benchmarks; **unadjusted** OHLCV only (no `adj_close`); verified by `tools/verify_market_data_contracts.py` when present |
 | `macro_observations_vintage` | `canonical_live` | PIT vintage storage | Must retain availability timestamps and reject future-available joins |
 | `macro_asof_daily` | `canonical_live` | PIT materialization | Must choose the latest eligible vintage under the documented as-of rule |
 | `instrument_benchmark_map` | `contract_defined_deferred` | Benchmark mapping | Semantics are fixed; historical completeness is still deferred |
@@ -416,6 +417,28 @@ Required repo gates:
 - `compat_guard`
 - `bridge_guard`
 - `verification_guard`
+
+## Silver legacy Phase-2 surfaces (write-time contracts)
+
+These tables use legacy column shapes aligned to current builders (sid-keyed or Alpha Vantage paths). They are registered as `contract_defined_deferred` for bundle gating: the global contract verifier does not require them until the roadmap promotes them, but builders run `validate_contract_df` at write time.
+
+| Table | Notes |
+| --- | --- |
+| `corporate_actions` | From bronze `av_daily_adjusted`; PK `(sid, action_type, ex_date, source_vendor)`; `record_date` / `payment_date` / `declared_date` nullable |
+| `adjustment_factors` | Derived from split corporate actions; PK `(sid, effective_date)` |
+
+## Export-side benchmark artifact
+
+The panel bridge keeps `panel_ohlcv_clean.csv` unchanged and writes a side artifact for downstream benchmark-relative diagnostics:
+
+- exported parquet: `*_benchmark_surface_daily.parquet`
+- advertised through the panel export manifest under `side_artifacts.benchmark_surface_daily`
+- minimum expected fields: `date`, `spy_ret_1d`, `spy_cumret`
+- optional fields may include `dff_daily_rate` and additional benchmark/context return columns
+
+`Pipeline.py` must consume this artifact through manifest metadata and must not guess paths or rebuild benchmark mappings locally.
+
+Gold `gold_macro_context` pivots silver `macro_asof_daily` on **`asof_date`** (not `trade_date`), matching the canonical macro PIT model.
 
 ## Documentation Synchronization Rule
 

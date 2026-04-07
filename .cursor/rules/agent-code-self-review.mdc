@@ -1,0 +1,19 @@
+---
+description: Compatibility shim for local E: storage and post-edit verification discipline.
+alwaysApply: true
+---
+
+# Agent Code Self Review
+
+This `.cursor` file is generated compatibility output only.
+Primary governing files for this concern are `AGENTS.md`, `docs/phase1-research-spec.md`, `docs/phase1-execution-roadmap.md`, and `README.md`.
+Do not use this file to add or redefine repo rules.
+
+Storage, verification, and completion rules live in:
+
+- `AGENTS.md`
+- `README.md`
+- `tools/verify_generated_surfaces.py`
+
+Keep durable repo work on `E:` rather than `C:`.
+Re-read changed regions, check diagnostics, run the smallest meaningful validation, and use the verifier handoff when the change is risky or cross-cutting.

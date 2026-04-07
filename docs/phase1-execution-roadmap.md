@@ -34,6 +34,10 @@ Before editing code:
 2. read this roadmap
 3. inspect the latest `02_metrics/overall_metrics.json` and `05_reports/final_report.md` if they exist
 
+If the task concerns the broader post-Phase-1 target architecture rather than the frozen Phase 1 validation boundary, also read:
+
+4. `docs/end_to_end_trading_system_architecture.md`
+
 ## Current status snapshot
 
 As of this checkpoint:

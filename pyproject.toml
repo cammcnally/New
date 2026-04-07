@@ -64,3 +64,6 @@ ingestion-test = [
     "freezegun>=1.2",
     "polyfactory>=2.0",
 ]
+analysis = [
+    "alphalens-reloaded==0.4.6",
+]

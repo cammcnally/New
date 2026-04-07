@@ -13,6 +13,7 @@ from pathlib import Path
 
 from market_data.clients.yfinance_client import download_batch
 from market_data.common.benchmarks import benchmark_symbols
+from market_data.common.dates import parse_date
 from market_data.common.logging import get_logger
 from market_data.common.paths import lake_root, raw_path
 from market_data.common.settings import IngestionSettings
@@ -23,6 +24,7 @@ log = get_logger("raw.yfinance_daily")
 def _is_excluded_listing(row: dict) -> tuple[bool, str | None]:
     """Return (exclude, reason) using explicit scope rules, not regex only."""
     symbol = str(row.get("symbol", "")).strip()
+    normalized_symbol = symbol.upper()
     name = str(row.get("name", "")).lower()
     asset_type = str(row.get("assetType", "")).strip().lower()
 
@@ -32,7 +34,16 @@ def _is_excluded_listing(row: dict) -> tuple[bool, str | None]:
     if symbol.startswith("$"):
         return True, "vendor_special_symbol"
 
-    if any(token in name for token in ("warrant", "right", "rights", "unit", "units")):
+    if ":" in normalized_symbol or "/" in normalized_symbol:
+        return True, "vendor_special_symbol"
+
+    tail_tokens = [token for token in normalized_symbol.split("-")[1:] if token]
+    if "P" in tail_tokens:
+        return True, "preferred_share"
+    if any(token in {"W", "WS", "WT", "R", "RT", "U", "UN"} for token in tail_tokens):
+        return True, "symbol_scope_exclusion"
+
+    if any(token in name for token in ("warrant", " right", " rights", "unit", "units", " wt", " wts", "when issued")):
         return True, "name_scope_exclusion"
 
     if any(token in name for token in ("preferred", "pref ", " preference")):
@@ -44,7 +55,32 @@ def _is_excluded_listing(row: dict) -> tuple[bool, str | None]:
     return False, None
 
 
-def _load_symbols(settings: IngestionSettings) -> tuple[list[str], list[dict[str, str]]]:
+def _eligible_for_window(row: dict, *, start_date: str) -> tuple[bool, str | None]:
+    """Include delisted symbols only when they overlap the requested window.
+
+    This preserves historical bootstrap coverage while avoiding pointless sync-time
+    fetches for symbols that were delisted well before the requested start date.
+    """
+    status = str(row.get("status", row.get("_av_state", ""))).strip().lower()
+    if status != "delisted":
+        return True, None
+    raw_delist = str(row.get("delistingDate", row.get("delistDate", ""))).strip()
+    if not raw_delist:
+        return False, "delisted_missing_date"
+    try:
+        delist_date = parse_date(raw_delist)
+    except Exception:
+        return False, "delisted_invalid_date"
+    if delist_date < parse_date(start_date):
+        return False, "delisted_before_window"
+    return True, None
+
+
+def _load_symbols(
+    settings: IngestionSettings,
+    *,
+    start_date: str,
+) -> tuple[list[str], list[dict[str, str]]]:
     """Load symbol list from AV listing status plus benchmark hard-includes."""
     listing_dir = raw_path("alphavantage", "listing_status", settings)
     if not listing_dir.exists():
@@ -60,6 +96,10 @@ def _load_symbols(settings: IngestionSettings) -> tuple[list[str], list[dict[str
         exchange = str(r.get("exchange", "")).strip()
         if exchange not in ("NYSE", "NASDAQ", "NYSE ARCA", "NYSE MKT", "BATS"):
             exclusions.append({"symbol": sym, "reason": f"exchange_{exchange or 'unknown'}"})
+            continue
+        include_for_window, window_reason = _eligible_for_window(r, start_date=start_date)
+        if not include_for_window:
+            exclusions.append({"symbol": sym, "reason": window_reason or "window_exclusion"})
             continue
         exclude, reason = _is_excluded_listing(r)
         if exclude:
@@ -88,7 +128,7 @@ def ingest(
         if dest.exists():
             shutil.rmtree(dest)
 
-    symbols, exclusions = _load_symbols(settings)
+    symbols, exclusions = _load_symbols(settings, start_date=start_date)
     if not symbols:
         log.error("no symbols found -- run AV listing ingest first")
         return {"method": "yfinance", "error": "no symbols"}

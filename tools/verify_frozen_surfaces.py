@@ -3,6 +3,9 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from typing import cast
+
+import yaml  # type: ignore[import-untyped]
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 TOOLS_DIR = Path(__file__).resolve().parent
@@ -12,9 +15,11 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from control_plane.policy_loader import load_canonical_policy_payload
+from tools.verify_scoped_canon import run_checks as run_scoped_canon_checks
 
 MANIFEST_PATH = PROJECT_ROOT / "contracts" / "frozen_surfaces_manifest.json"
 PHASE1_CONTRACT_PATH = PROJECT_ROOT / "control_plane" / "phase1_contract.json"
+FILE_REGISTRY_PATH = PROJECT_ROOT / "repo_control" / "file_registry.yaml"
 
 
 def _load_json(path: Path) -> dict[str, object]:
@@ -58,11 +63,14 @@ def _ensure_runtime_contracts() -> None:
 
     action_registry_path = PROJECT_ROOT / "control_plane" / "policies" / "action_registry.json"
     actions = _load_json(action_registry_path)
-    if actions["run_tests_all"]["command"] != ["python", "-m", "pytest", "-q"]:
+    run_tests_all = cast(dict[str, object], actions["run_tests_all"])
+    run_tests_marker = cast(dict[str, object], actions["run_tests_marker"])
+    run_tests_scoped = cast(dict[str, object], actions["run_tests_scoped"])
+    if run_tests_all["command"] != ["python", "-m", "pytest", "-q"]:
         raise SystemExit("action_registry run_tests_all is not using repo-local python -m pytest")
-    if actions["run_tests_marker"]["command"] != ["python", "-m", "pytest", "-m", "{marker}"]:
+    if run_tests_marker["command"] != ["python", "-m", "pytest", "-m", "{marker}"]:
         raise SystemExit("action_registry run_tests_marker is not using repo-local python -m pytest")
-    if actions["run_tests_scoped"]["command"] != ["python", "-m", "pytest", "-q", "{paths}"]:
+    if run_tests_scoped["command"] != ["python", "-m", "pytest", "-q", "{paths}"]:
         raise SystemExit("action_registry run_tests_scoped is missing or incorrect")
 
 
@@ -71,6 +79,17 @@ def _ensure_no_bare_pytest_lines() -> None:
     bare_lines = [line for line in readme_lines if line.strip().startswith("pytest ")]
     if bare_lines:
         raise SystemExit("README.md still contains bare pytest entrypoints")
+
+
+def _ensure_file_registry_exists() -> None:
+    if not FILE_REGISTRY_PATH.exists():
+        raise SystemExit(f"Missing file registry: {FILE_REGISTRY_PATH}")
+    payload = yaml.safe_load(FILE_REGISTRY_PATH.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise SystemExit("repo_control/file_registry.yaml must contain a YAML object")
+    entries = payload.get("entries")
+    if not isinstance(entries, list) or not entries:
+        raise SystemExit("repo_control/file_registry.yaml must contain non-empty entries")
 
 
 def main() -> int:
@@ -86,9 +105,11 @@ def main() -> int:
         if not (PROJECT_ROOT / relative).exists():
             raise SystemExit(f"Missing frozen surface: {relative}")
 
+    _ensure_file_registry_exists()
     _ensure_no_legacy_runtime_tokens(tracked_files)
     _ensure_runtime_contracts()
     _ensure_no_bare_pytest_lines()
+    run_scoped_canon_checks(PROJECT_ROOT)
     print("frozen_surfaces_ok")
     return 0
 

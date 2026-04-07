@@ -1,0 +1,31 @@
+schema_version: 1
+mirror_id: runtime
+scoped_canon_source: docs/specs/CANONICAL_INSTALLATION_DIRECTIVE.md
+area_status: mixed_current_and_deferred
+precedence:
+  higher_priority_authorities:
+    - AGENTS.md
+    - docs/phase1-research-spec.md
+    - docs/phase1-execution-roadmap.md
+  preserved_runtime_surface: Pipeline.py
+  lower_precedence_surfaces:
+    - README.md
+    - docs/implementation_runbook.md
+    - market_data/COMMANDS.md
+    - docs/end_to_end_trading_system_architecture.md
+effective_current_canon:
+  authority:
+    - AGENTS.md
+  summary: uv remains the active environment and runtime authority.
+  implemented_state:
+    package_manager: uv
+    env_sync_command: uv sync --group dev --group control-plane --group ingestion --group ingestion-test
+    python_version: 3.11.9
+    venv_path: .venv
+deferred_target_canon:
+  authority:
+    - docs/specs/CANONICAL_INSTALLATION_DIRECTIVE.md
+  summary: Poetry cutover remains deferred until protected infrastructure is formally replaced.
+  target_state:
+    package_manager: Poetry
+    status: deferred_requires_separate_approval

@@ -50,7 +50,12 @@ def _scalar_metric_value(value: object) -> Optional[float]:
 
 
 @contextmanager
-def pipeline_run_context(config: "PipelineConfig") -> Iterator[Any]:
+def pipeline_run_context(
+    config: "PipelineConfig",
+    *,
+    extra_tags: Optional[Dict[str, Any]] = None,
+    extra_params: Optional[Dict[str, Any]] = None,
+) -> Iterator[Any]:
     """Start a tracked run: local ``mlruns/``, experiment ``swing-pipeline``, config params and tags."""
     from Pipeline import SCHEMA_VERSION, build_config_hash
 
@@ -64,9 +69,15 @@ def pipeline_run_context(config: "PipelineConfig") -> Iterator[Any]:
         "python_version": py_ver,
         "pipeline_version": str(SCHEMA_VERSION),
     }
+    if extra_tags:
+        tags.update({str(k): _config_param_value(v) for k, v in extra_tags.items() if v is not None})
 
     with mlflow.start_run(tags=tags) as run:
         mlflow.log_params(_config_to_params(config))
+        if extra_params:
+            mlflow.log_params(
+                {str(k): _config_param_value(v) for k, v in extra_params.items() if v is not None}
+            )
         yield run
 
 
@@ -163,3 +174,9 @@ def log_dataset(name: str, path: str, digest: Optional[str] = None) -> None:
         dataset = MetaDataset(source=resolve_dataset_source(src_str), name=name, digest=digest)
 
     mlflow.log_input(dataset, context="training")
+
+
+def log_artifact_path(path: str) -> None:
+    resolved = Path(path).expanduser().resolve()
+    if resolved.exists():
+        mlflow.log_artifact(str(resolved))

@@ -18,3 +18,5 @@ jobs:
         run: uv run python tools/verify_tracked_locks.py
       - name: Verify frozen surfaces
         run: uv run python tools/verify_frozen_surfaces.py
+      - name: Audit file registry
+        run: uv run python tools/audit_file_registry.py

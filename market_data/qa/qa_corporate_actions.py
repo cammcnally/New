@@ -6,7 +6,7 @@ import polars as pl
 from market_data.common.io_parquet import read_parquet
 from market_data.common.logging import get_logger
 from market_data.common.paths import silver_path
-from market_data.common.schema_registry import CORPORATE_ACTIONS_PK
+from market_data.common.schema_registry import CORPORATE_ACTIONS_SILVER_AV_PK
 from market_data.common.settings import IngestionSettings
 
 log = get_logger("qa.corporate_actions")
@@ -41,7 +41,7 @@ def check(*, settings: IngestionSettings) -> dict:
         errors.append(f"{len(bad_divs)} dividends with negative cash_amount")
     stats["bad_dividend_amounts"] = len(bad_divs)
 
-    dup_count = len(df) - len(df.unique(subset=CORPORATE_ACTIONS_PK))
+    dup_count = len(df) - len(df.unique(subset=CORPORATE_ACTIONS_SILVER_AV_PK))
     if dup_count > 0:
         errors.append(f"{dup_count} duplicate corporate actions")
     stats["pk_dupes"] = dup_count

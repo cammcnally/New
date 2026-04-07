@@ -1,0 +1,16 @@
+---
+description: Compatibility shim for canonical output and resume semantics.
+alwaysApply: true
+---
+
+# Output And Resume Contract
+
+This `.cursor` file is generated compatibility output only.
+Primary governing files for this concern are `AGENTS.md`, `docs/phase1-research-spec.md`, `docs/phase1-execution-roadmap.md`, and `README.md`.
+Do not use this file to add or redefine repo rules.
+
+Output and resume rules live in:
+
+- `README.md`
+- `AGENTS.md`
+- runtime actions `run_pipeline`, `resume_pipeline`, and `read_pipeline_log`

@@ -35,8 +35,8 @@ def build(
 
     macro = (
         read_parquet(macro_dir)
-        .filter((pl.col("trade_date") >= sd) & (pl.col("trade_date") <= ed))
-        .select("trade_date", "series_id", "value")
+        .filter((pl.col("asof_date") >= sd) & (pl.col("asof_date") <= ed))
+        .select("asof_date", "series_id", "value")
         .collect()
     )
     if len(macro) == 0:
@@ -45,11 +45,11 @@ def build(
 
     wide = macro.pivot(
         on="series_id",
-        index="trade_date",
+        index="asof_date",
         values="value",
-    ).sort("trade_date")
+    ).sort("asof_date")
 
-    wide = wide.with_columns(pl.col("trade_date").dt.year().alias("year"))
+    wide = wide.with_columns(pl.col("asof_date").dt.year().alias("year"))
 
     rows = write_parquet(wide, out_dir, partition_by=["year"])
     log.info(

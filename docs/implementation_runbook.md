@@ -2,16 +2,23 @@
 
 ## Purpose
 
-This is the authoritative local runbook for the canonical market-data layer and the downstream `Pipeline.py` compatibility run.
+This is a secondary local runbook for the canonical market-data layer and the downstream `Pipeline.py` compatibility run.
 
 The repo has two explicit layers:
 
-1. `market_data` is the canonical market-data platform and source of truth.
+1. `market_data` is the canonical market-data platform, as governed by `docs/data_contract.md`.
 2. `Pipeline.py` is the downstream Phase 1 research pipeline that consumes a derived/exported compatibility surface.
 
-Use this runbook when running the repo end to end, resuming after failure, or triaging scoped verification issues.
+Use this runbook when running the repo end to end, resuming after failure, or triaging repo-governance and deferred-spec verification issues.
 
-## Authoritative Local Commands
+Installation, environment, and layout guidance inside this runbook's scope defer to
+`docs/specs/CANONICAL_INSTALLATION_DIRECTIVE.md`. This runbook does not
+supersede `AGENTS.md`, the frozen Phase 1 docs, or current `Pipeline.py`
+behavior.
+
+Use `README.md` and `market_data/COMMANDS.md` as the operator-facing command surfaces. This runbook is a troubleshooting and rerun companion.
+
+## Primary Local Commands
 
 Primary entrypoints:
 
@@ -30,9 +37,12 @@ uv run python tools/verify_market_data_bridge.py
 uv run python tools/verify_market_data.py
 ```
 
+Primary repo-governance checks live in `README.md` and `make verify`.
+Use `uv run python tools/verify_scoped_canon.py` only when maintaining the deferred target-state spec surfaces under `docs/specs/`, `docs/governance/`, or the mirror files under `config/canonical/`.
+
 ## Stage Order
 
-The authoritative e2e flow runs these stages in order:
+The current e2e flow runs these stages in order:
 
 1. dependency sync
 2. canonical market-data ingest/build
@@ -129,7 +139,7 @@ Before closing work:
 - PIT leakage checks must pass
 - bridge/export compatibility checks must pass
 - docs-sync checks must pass
-- the authoritative e2e command must complete
+- the primary e2e command must complete
 - manifests and status outputs must be written
 
 ## Reporting Discipline

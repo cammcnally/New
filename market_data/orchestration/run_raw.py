@@ -48,8 +48,10 @@ def run_raw(
                 results["av_listing"] = ingest_listing(settings=settings)
                 results["av_daily_adjusted"] = ingest_adj(settings=settings, start_date=start_date, end_date=end_date, symbols_file=symbols_file)
             elif src == "sec":
+                from market_data.raw.ingest_sec_company_tickers import ingest as ingest_tickers
                 from market_data.raw.ingest_sec_submissions import ingest as ingest_sub
                 from market_data.raw.ingest_sec_companyfacts import ingest as ingest_facts
+                results["sec_company_tickers"] = ingest_tickers(settings=settings)
                 results["sec_submissions"] = ingest_sub(settings=settings)
                 results["sec_companyfacts"] = ingest_facts(settings=settings)
             elif src == "fred":

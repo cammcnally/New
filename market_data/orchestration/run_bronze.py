@@ -13,6 +13,7 @@ _NORMALIZERS = {
     "stooq_intraday": "market_data.bronze.normalize_stooq_intraday",
     "av_listing_status": "market_data.bronze.normalize_alphavantage_listing_status",
     "av_daily_adjusted": "market_data.bronze.normalize_alphavantage_daily_adjusted",
+    "sec_company_tickers": "market_data.bronze.normalize_sec_company_tickers",
     "sec_submissions": "market_data.bronze.normalize_sec_submissions",
     "sec_companyfacts": "market_data.bronze.normalize_sec_companyfacts",
     "fred_observations": "market_data.bronze.normalize_fred_observations",

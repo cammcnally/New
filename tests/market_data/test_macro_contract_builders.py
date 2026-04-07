@@ -7,6 +7,8 @@ import pytest
 
 from market_data.common.io_parquet import read_parquet, write_parquet
 from market_data.common.paths import bronze_path, silver_path
+from market_data.common.paths import gold_path
+from market_data.gold.build_gold_macro_context import build as build_gold_macro_context
 from market_data.silver.build_macro_asof_daily import build as build_macro_asof_daily
 from market_data.silver.build_macro_observations_vintage import build as build_macro_observations_vintage
 
@@ -98,3 +100,35 @@ def test_build_macro_asof_daily_emits_canonical_selection_fields(test_settings) 
         "built_at_utc",
     }.issubset(set(out.columns))
     assert out["selection_rule_version"].to_list() == ["macro_asof_latest_available_v1"] * len(out)
+
+
+def test_build_gold_macro_context_reads_asof_date_axis(test_settings) -> None:
+    asof_dir = silver_path("macro_asof_daily", test_settings)
+    asof_dir.mkdir(parents=True, exist_ok=True)
+    asof = pl.DataFrame(
+        {
+            "series_id": ["CPIAUCSL"],
+            "asof_date": [date(2024, 1, 10)],
+            "observation_date": [date(2024, 1, 1)],
+            "value": [100.0],
+            "selected_vintage_date": [date(2024, 1, 10)],
+            "selected_available_from_ts_utc": [_utc(2024, 1, 10, 13, 0)],
+            "selection_rule_version": ["macro_asof_latest_available_v1"],
+            "built_at_utc": [_utc(2024, 1, 10, 13, 5)],
+        }
+    ).with_columns(
+        pl.col("selected_available_from_ts_utc").cast(pl.Datetime("us", "UTC")),
+        pl.col("built_at_utc").cast(pl.Datetime("us", "UTC")),
+    )
+    write_parquet(asof, asof_dir / "asof.parquet")
+
+    build_gold_macro_context(
+        settings=test_settings,
+        start_date="2024-01-01",
+        end_date="2024-01-31",
+        full_refresh=True,
+    )
+
+    wide = read_parquet(gold_path("gold_macro_context", test_settings)).collect()
+    assert "asof_date" in wide.columns
+    assert "CPIAUCSL" in wide.columns

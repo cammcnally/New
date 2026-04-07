@@ -1,4 +1,4 @@
-name: Data Contract Validation
+name: Great Expectations Suite Validation
 
 on:
   workflow_call:
@@ -17,7 +17,7 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           version: "latest"
-      - run: uv sync --group dev --group control-plane --group data
+      - run: uv sync --group dev --group control-plane --group ingestion --group ingestion-test --group data
       - name: Validate GE suites are well-formed
         run: |
           uv run python -c "

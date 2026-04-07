@@ -8,6 +8,7 @@ import polars as pl
 from market_data.common.dates import utc_now
 from market_data.common.io_parquet import read_parquet, write_parquet
 from market_data.common.logging import get_logger
+from market_data.common.pandera_contracts import validate_contract_df
 from market_data.common.paths import silver_path
 from market_data.common.schema_registry import ADJUSTMENT_FACTORS
 from market_data.common.settings import IngestionSettings
@@ -98,6 +99,8 @@ def build(
     for col, dtype in ADJUSTMENT_FACTORS.items():
         if col in out.columns and out.schema[col] != dtype:
             out = out.with_columns(pl.col(col).cast(dtype))
+
+    validate_contract_df("adjustment_factors", out)
 
     out = out.with_columns(pl.col("effective_date").dt.year().alias("year"))
 

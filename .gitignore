@@ -12,14 +12,16 @@ env/
 node_modules/
 
 # IDE / editor
-.cursor/
-!.cursor/rules/
-!.cursor/rules/**
-!.cursor/agents/
-!.cursor/agents/**
+# `.cursor/` is intentionally tracked so generated projection files and cloud-agent
+# environment helpers are available to local and cloud agents.
+!.cursor/
+!.cursor/**
 .idea/
 *.swp
 *.swo
+
+# Overnight agent attempt payloads (local only)
+ops/overnight/out/
 
 # Pipeline run outputs (regenerable)
 pipeline_outputs/
@@ -51,10 +53,20 @@ mlruns/
 # Lineage events
 lineage_events/
 
-# Cursor skills/commands (generated, tracked separately)
-!.cursor/skills/
-!.cursor/skills/**
-!.cursor/commands/
-!.cursor/commands/**
-!.cursor/settings.json
-!.cursor/projection_manifest.json
+# Market data ingestion
+data_lake/
+*.duckdb
+*.duckdb.wal
+.env
+
+# Cleanup audit outputs
+outputs/
+!outputs/.gitkeep
+
+# Repo runtime: mirror backups and local-only debris (never stage)
+.repo_runtime/
+
+# Repo inventory: keep latest snapshot only in VCS (timestamped runs are local)
+artifacts/repo_inventory/inventory_*.json
+!artifacts/repo_inventory/inventory_latest.json
+

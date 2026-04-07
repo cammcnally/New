@@ -11,7 +11,17 @@ from market_data.common.settings import IngestionSettings
 log = get_logger("qa.macro")
 
 
-def check(*, settings: IngestionSettings) -> dict:
+def check(
+    *,
+    settings: IngestionSettings,
+    asof_lf: pl.LazyFrame | None = None,
+    vintage_lf: pl.LazyFrame | None = None,
+) -> dict:
+    """Run macro PIT QA checks.
+
+    When *asof_lf* / *vintage_lf* are provided, reuse those lazy frames instead of
+    scanning the lake again (callers should not also load the same paths eagerly).
+    """
     errors: list[str] = []
     warnings: list[str] = []
     stats: dict[str, object] = {}
@@ -23,51 +33,65 @@ def check(*, settings: IngestionSettings) -> dict:
         warnings.append("macro_asof_daily directory not found")
         return {"errors": errors, "warnings": warnings, "stats": stats}
 
-    asof = read_parquet(asof_dir).collect()
-    stats["asof_rows"] = len(asof)
-    stats["series_count"] = asof["series_id"].n_unique()
+    asof_src = asof_lf if asof_lf is not None else read_parquet(asof_dir)
+    stats["asof_rows"] = asof_src.select(pl.len()).collect().item()
+    stats["series_count"] = asof_src.select(pl.col("series_id").n_unique()).collect().item()
 
-    if vintage_dir.exists():
-        vintage = read_parquet(vintage_dir).collect()
-        vintage_keys = vintage.select(
+    if vintage_lf is not None:
+        vint_src = vintage_lf
+        vintage_keys = vint_src.select(
             "series_id",
             "observation_date",
             pl.col("vintage_date").alias("selected_vintage_date"),
         ).unique()
-
-        orphan = asof.join(
+        orphan = asof_src.join(
             vintage_keys,
             on=["series_id", "observation_date", "selected_vintage_date"],
             how="anti",
         )
-        if len(orphan) > 0:
-            warnings.append(
-                f"{len(orphan)} asof rows with no matching vintage upstream"
-            )
-        stats["orphan_asof_rows"] = len(orphan)
+        ocount = orphan.select(pl.len()).collect().item()
+        if ocount > 0:
+            warnings.append(f"{ocount} asof rows with no matching vintage upstream")
+        stats["orphan_asof_rows"] = ocount
+    elif vintage_dir.exists():
+        vint_src = read_parquet(vintage_dir)
+        vintage_keys = vint_src.select(
+            "series_id",
+            "observation_date",
+            pl.col("vintage_date").alias("selected_vintage_date"),
+        ).unique()
+        orphan = asof_src.join(
+            vintage_keys,
+            on=["series_id", "observation_date", "selected_vintage_date"],
+            how="anti",
+        )
+        ocount = orphan.select(pl.len()).collect().item()
+        if ocount > 0:
+            warnings.append(f"{ocount} asof rows with no matching vintage upstream")
+        stats["orphan_asof_rows"] = ocount
     else:
         warnings.append(
             "macro_observations_vintage not found; skipping vintage check"
         )
 
-    future_vintage = asof.filter(pl.col("selected_vintage_date") > pl.col("asof_date"))
-    if len(future_vintage) > 0:
-        errors.append(
-            f"{len(future_vintage)} rows with selected_vintage_date > asof_date (future leakage)"
-        )
-    stats["future_vintage_leakage"] = len(future_vintage)
+    future_vintage = asof_src.filter(pl.col("selected_vintage_date") > pl.col("asof_date"))
+    fv = future_vintage.select(pl.len()).collect().item()
+    if fv > 0:
+        errors.append(f"{fv} rows with selected_vintage_date > asof_date (future leakage)")
+    stats["future_vintage_leakage"] = fv
 
     asof_cutoff = (
         pl.col("asof_date").cast(pl.Datetime("us", "UTC"))
         + pl.duration(days=1)
         - pl.duration(microseconds=1)
     )
-    future_available = asof.filter(pl.col("selected_available_from_ts_utc") > asof_cutoff)
-    if len(future_available) > 0:
+    future_available = asof_src.filter(pl.col("selected_available_from_ts_utc") > asof_cutoff)
+    fa = future_available.select(pl.len()).collect().item()
+    if fa > 0:
         errors.append(
-            f"{len(future_available)} rows with selected_available_from_ts_utc after asof_date cutoff"
+            f"{fa} rows with selected_available_from_ts_utc after asof_date cutoff"
         )
-    stats["future_available_leakage"] = len(future_available)
+    stats["future_available_leakage"] = fa
 
     log.info("qa_macro: %d errors, %d warnings", len(errors), len(warnings))
     return {"errors": errors, "warnings": warnings, "stats": stats}

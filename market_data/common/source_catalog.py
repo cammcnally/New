@@ -55,6 +55,7 @@ _BRONZE_DATASET_MAP = {
     ("stooq", "intraday"): "stooq_intraday",
     ("alphavantage", "listing_status"): "av_listing_status",
     ("alphavantage", "daily_adjusted"): "av_daily_adjusted",
+    ("sec", "company_tickers"): "sec_company_tickers",
     ("sec", "submissions"): "sec_submissions",
     ("sec", "companyfacts"): "sec_companyfacts",
     ("fred", "observations"): "fred_observations",

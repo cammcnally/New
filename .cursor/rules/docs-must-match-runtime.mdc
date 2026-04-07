@@ -1,0 +1,18 @@
+---
+description: Compatibility shim that points local docs maintenance back to canonical sources.
+alwaysApply: true
+---
+
+# Docs Must Match Runtime
+
+This `.cursor` file is generated compatibility output only.
+Primary governing files for this concern are `AGENTS.md`, `docs/phase1-research-spec.md`, `docs/phase1-execution-roadmap.md`, and `README.md`.
+Do not use this file to add or redefine repo rules.
+
+Update canonical sources first:
+
+- `AGENTS.md`
+- `README.md`
+- Phase 1 docs under `docs/`
+
+Then rerender `.cursor` shims with `python tools/render_cursor_projection.py`.

@@ -1,0 +1,154 @@
+{
+  "version": 1,
+  "entries": {
+    "Pipeline.py": {
+      "sha256": "cb7551d9066089b5520cc42250631c91f1bf6d2472b813d1ca24883ec3409957",
+      "allowed_change_categories": [
+        "manifest_hookup",
+        "compatibility_artifact_path_hookup",
+        "benchmark_side_artifact_consumption",
+        "approved_bug_fix"
+      ]
+    },
+    "feature_registry/__init__.py": {
+      "sha256": "b7a63b1fd260bdb62822e6cbfcd38d5465aa463f6e8660ca511ae9525c09f4cf",
+      "allowed_change_categories": [
+        "manifest_hookup",
+        "compatibility_artifact_path_hookup",
+        "benchmark_side_artifact_consumption",
+        "approved_bug_fix"
+      ]
+    },
+    "feature_registry/definitions.py": {
+      "sha256": "ed2751298af19031bae1cc1056d7d6dc993bffaebbfff6ed2dbdb3ee14ddcf72",
+      "allowed_change_categories": [
+        "manifest_hookup",
+        "compatibility_artifact_path_hookup",
+        "benchmark_side_artifact_consumption",
+        "approved_bug_fix"
+      ]
+    },
+    "feature_registry/features.yml": {
+      "sha256": "fa92b9ff10e7fc460d867a0fe28ac1e02767ccb529e20d7cdfece038e47419eb",
+      "allowed_change_categories": [
+        "manifest_hookup",
+        "compatibility_artifact_path_hookup",
+        "benchmark_side_artifact_consumption",
+        "approved_bug_fix"
+      ]
+    },
+    "feature_registry/registry.py": {
+      "sha256": "6eab6d40ae3fc785efe5ea51d24a7a8805f3ba87a3a4b53abc80af3f8235775f",
+      "allowed_change_categories": [
+        "manifest_hookup",
+        "compatibility_artifact_path_hookup",
+        "benchmark_side_artifact_consumption",
+        "approved_bug_fix"
+      ]
+    },
+    "feature_registry/retrieval.py": {
+      "sha256": "b0191fa2985080497f930869dcd4f72b03542e5623701e046454f57253772dde",
+      "allowed_change_categories": [
+        "manifest_hookup",
+        "compatibility_artifact_path_hookup",
+        "benchmark_side_artifact_consumption",
+        "approved_bug_fix"
+      ]
+    },
+    "feature_registry/tests/__init__.py": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "allowed_change_categories": [
+        "manifest_hookup",
+        "compatibility_artifact_path_hookup",
+        "benchmark_side_artifact_consumption",
+        "approved_bug_fix"
+      ]
+    },
+    "feature_registry/tests/conftest.py": {
+      "sha256": "c888a4eea9243d4b5e287d86d2d8b9c9f940e4ee6885e09d0cf4a95ed2b02c57",
+      "allowed_change_categories": [
+        "manifest_hookup",
+        "compatibility_artifact_path_hookup",
+        "benchmark_side_artifact_consumption",
+        "approved_bug_fix"
+      ]
+    },
+    "feature_registry/tests/test_anti_leakage.py": {
+      "sha256": "2c85f64d15cd5c0cbe40cea021a6f039f1034b9a1e9ddff28b807e6305673dee",
+      "allowed_change_categories": [
+        "manifest_hookup",
+        "compatibility_artifact_path_hookup",
+        "benchmark_side_artifact_consumption",
+        "approved_bug_fix"
+      ]
+    },
+    "feature_registry/tests/test_pit_retrieval.py": {
+      "sha256": "e5f34378ff323faf1c26ddd3538a38707a3f837494ededc2198d954c41205b6b",
+      "allowed_change_categories": [
+        "manifest_hookup",
+        "compatibility_artifact_path_hookup",
+        "benchmark_side_artifact_consumption",
+        "approved_bug_fix"
+      ]
+    },
+    "tests/test_phase1_helpers.py": {
+      "sha256": "d27f09a2ec9bf3ec386c2167bd06c2e4681034b2480e17e02a4d63c7b73c683d",
+      "allowed_change_categories": [
+        "manifest_hookup",
+        "compatibility_artifact_path_hookup",
+        "benchmark_side_artifact_consumption",
+        "approved_bug_fix"
+      ]
+    },
+    "tests/test_phase1_regression.py": {
+      "sha256": "e463c950517a237681d8249eadd6bbca8c2db549a440ce092bfa06efa14ca327",
+      "allowed_change_categories": [
+        "manifest_hookup",
+        "compatibility_artifact_path_hookup",
+        "benchmark_side_artifact_consumption",
+        "approved_bug_fix"
+      ]
+    },
+    "tests/test_phase1_sanity_check_validator.py": {
+      "sha256": "d98dbb7ddb65607a35a35eedff8fd71b508ffd237a9f30e5f6911873d2330acb",
+      "allowed_change_categories": [
+        "manifest_hookup",
+        "compatibility_artifact_path_hookup",
+        "benchmark_side_artifact_consumption",
+        "approved_bug_fix"
+      ]
+    },
+    "tests/test_phase1_smoke.py": {
+      "sha256": "5ffdd2e8cf3238d4506f91295b2d1002a3ae36adc5e9629930d3a2856b9778cb",
+      "allowed_change_categories": [
+        "manifest_hookup",
+        "compatibility_artifact_path_hookup",
+        "benchmark_side_artifact_consumption",
+        "approved_bug_fix"
+      ]
+    },
+    "tools/phase1_sanity_check.py": {
+      "sha256": "a2f0127263dbf63457cfe833d06bb4557a50cc344aedbc3e36c92bb527ef4676",
+      "allowed_change_categories": [
+        "manifest_hookup",
+        "compatibility_artifact_path_hookup",
+        "benchmark_side_artifact_consumption",
+        "approved_bug_fix"
+      ]
+    },
+    "config/canonical/acceptance_status_contract.yaml": {
+      "sha256": "a25b4c95bdee76505e144373c4ba28a24c1430e8c2daafced3b5fb9ac84822ef",
+      "allowed_change_categories": [
+        "approved_vocabulary_extension",
+        "approved_bug_fix"
+      ]
+    },
+    "config/canonical/identity_and_timing_contract.yaml": {
+      "sha256": "88874c7549139b89e0ca1c9706597927ad0507700de248f69c44dd720fef9080",
+      "allowed_change_categories": [
+        "approved_semantic_clarification",
+        "approved_bug_fix"
+      ]
+    }
+  }
+}

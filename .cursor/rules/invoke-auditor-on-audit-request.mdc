@@ -1,0 +1,12 @@
+---
+description: Compatibility shim for the canonical auditor handoff.
+alwaysApply: true
+---
+
+# Invoke Auditor On Audit Request
+
+This `.cursor` file is generated compatibility output only.
+Primary governing files for this concern are `AGENTS.md`, `docs/phase1-research-spec.md`, `docs/phase1-execution-roadmap.md`, and `README.md`.
+Do not use this file to add or redefine repo rules.
+
+Use the local `pipeline-auditor` alias only as a thin wrapper around the canonical `Auditor` role in `AGENTS.md`.

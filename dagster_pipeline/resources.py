@@ -29,6 +29,7 @@ class PipelineConfigResource(ConfigurableResource):
 
     input_panel_csv: str = "panel_ohlcv_clean.csv"
     output_dir: str = "pipeline_outputs"
+    strategy_report_template: str = "strategy-report.qmd"
     resume: bool = False
     starting_capital: float = 50_000.0
     risk_per_trade: float = 0.03
@@ -133,6 +134,9 @@ class PipelineConfigResource(ConfigurableResource):
         cfg.input_panel_csv = str(Pipeline_mod._resolve_project_path(cfg.input_panel_csv))
         cfg.output_dir = str(
             Pipeline_mod._resolve_project_path(cfg.output_dir, force_project_drive=True)
+        )
+        cfg.strategy_report_template = str(
+            Pipeline_mod._resolve_project_path(cfg.strategy_report_template)
         )
         if cfg.deterministic_mode:
             cfg.n_jobs_tree_models = 1

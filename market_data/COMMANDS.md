@@ -6,7 +6,16 @@ Use this file together with:
 
 - `README.md`
 - `docs/data_contract.md`
+- `docs/specs/CANONICAL_INSTALLATION_DIRECTIVE.md`
 - `docs/market_data_roadmap.md`
+
+Installation, environment, and layout guidance inside this command guide's scope
+defer to `docs/specs/CANONICAL_INSTALLATION_DIRECTIVE.md`. This guide does not
+supersede `AGENTS.md`, the frozen Phase 1 docs, or current `Pipeline.py`
+behavior.
+
+Primary repo-governance checks live in `README.md` and `make verify`.
+Use `tools/verify_scoped_canon.py` only when maintaining the deferred target-state spec surfaces.
 
 ## Primary Flow
 
@@ -75,8 +84,26 @@ uv run python tools/verify_market_data_contracts.py
 uv run python tools/verify_market_data_pit.py
 uv run python tools/verify_market_data_docs_sync.py
 uv run python tools/verify_market_data_bridge.py --panel-path panel_ohlcv_clean.csv --require-manifest
+uv run python tools/verify_market_data_bridge.py --panel-path panel_ohlcv_clean.csv --require-manifest --require-benchmark-artifacts
 uv run python tools/verify_market_data.py
 ```
+
+### 5b. Deferred Target-State Spec Consistency
+
+```powershell
+uv run python tools/verify_scoped_canon.py
+```
+
+### 6. DVC (narrow export spine)
+
+`dvc.yaml` versions only the exported panel CSV and its sidecar manifest. Recreate tracked outputs with a lake that already passes verification:
+
+```powershell
+uv run python tools/run_repo_e2e.py --stop-after export_panel
+dvc repro
+```
+
+Lake paths under `data_lake/` remain gitignored; they are not DVC outputs. Populate macro PIT silver tables with a valid `FRED_API_KEY` and the FRED vintage ingest → bronze → silver chain (`macro_series.yaml` marks `use_vintages: true` for configured series).
 
 These commands validate:
 
@@ -91,6 +118,7 @@ These commands validate:
 
 ```powershell
 uv run python -m market_data.cli export-latest --output panel_ohlcv_clean.csv
+Get-ChildItem .\panel_ohlcv_clean_benchmark_surface_daily.parquet
 uv run python -m market_data.cli export-asof --asof-date 2026-01-15 --output panel_ohlcv_clean.csv
 ```
 
@@ -107,13 +135,15 @@ The export writes or expects:
 ### 7. Run The Downstream Research Pipeline
 
 ```powershell
-uv run python Pipeline.py --input_panel_csv panel_ohlcv_clean.csv --output_dir pipeline_outputs
-uv run python Pipeline.py --input_panel_csv panel_ohlcv_clean.csv --output_dir pipeline_outputs --resume
+uv run python Pipeline.py --input_panel_csv panel_ohlcv_clean.csv --output_dir pipeline_outputs --strategy_report_template strategy-report.qmd
+uv run python Pipeline.py --input_panel_csv panel_ohlcv_clean.csv --output_dir pipeline_outputs --strategy_report_template strategy-report.qmd --resume
 ```
 
 The input panel sidecar manifest is mandatory. `Pipeline.py` now fails closed when the exported CSV does not have a matching `.manifest.json` with non-empty `dataset_build_id` and `export_panel_version_id`.
 
 When the optional `lineage` dependency group is installed and file-backed lineage emission succeeds, downstream runs also write `pipeline_outputs/06_state/lineage_summary.json` plus file-backed OpenLineage events under `pipeline_outputs/06_state/lineage_events/`.
+
+The canonical Quarto report template path is recorded in downstream artifacts as `strategy_report_template_path` and defaults to `strategy-report.qmd`.
 
 ## Manifest Surfaces
 

@@ -63,6 +63,81 @@ def _build_close_times(start: date, end: date) -> pl.DataFrame:
     )
 
 
+def _benchmark_surface_path_for_panel(out: Path) -> Path:
+    return out.with_name(f"{out.stem}_benchmark_surface_daily.parquet")
+
+
+def _build_benchmark_surface(
+    *,
+    settings: IngestionSettings,
+    output_panel_path: Path,
+    start_date: date,
+    end_date: date,
+) -> Path | None:
+    bench_path = silver_path("benchmark_prices_daily", settings)
+    sec_master_path = silver_path("security_master", settings)
+    if not bench_path.exists() or not sec_master_path.exists():
+        return None
+
+    bench = (
+        read_parquet(bench_path)
+        .filter((pl.col("trade_date") >= start_date) & (pl.col("trade_date") <= end_date))
+        .collect()
+    )
+    if bench.height == 0:
+        return None
+    sec_master = read_parquet(sec_master_path).select(["sid", "symbol_current"]).collect()
+    bench = (
+        bench.join(sec_master, on="sid", how="left")
+        .filter(pl.col("symbol_current").is_not_null())
+        .sort(["symbol_current", "trade_date"])
+        .with_columns(
+            pl.col("close").pct_change().over("symbol_current").alias("ret_1d"),
+        )
+        .with_columns(
+            (((pl.col("ret_1d").fill_null(0.0) + 1.0).cum_prod().over("symbol_current")) - 1.0).alias(
+                "cumret"
+            )
+        )
+    )
+
+    ret_wide = bench.pivot(on="symbol_current", index="trade_date", values="ret_1d").rename(
+        {
+            col: f"{col.lower().replace('^', '').replace('.', '_')}_ret_1d"
+            for col in bench["symbol_current"].unique().to_list()
+        }
+    )
+    cum_wide = bench.pivot(on="symbol_current", index="trade_date", values="cumret").rename(
+        {
+            col: f"{col.lower().replace('^', '').replace('.', '_')}_cumret"
+            for col in bench["symbol_current"].unique().to_list()
+        }
+    )
+    surface = ret_wide.join(cum_wide, on="trade_date", how="left").rename({"trade_date": "date"})
+
+    macro_path = silver_path("macro_asof_daily", settings)
+    if macro_path.exists():
+        dff = (
+            read_parquet(macro_path)
+            .filter(
+                (pl.col("series_id") == "DFF")
+                & (pl.col("asof_date") >= start_date)
+                & (pl.col("asof_date") <= end_date)
+            )
+            .select(
+                pl.col("asof_date").alias("date"),
+                (pl.col("value") / pl.lit(100.0 * 360.0)).alias("dff_daily_rate"),
+            )
+            .collect()
+        )
+        if dff.height > 0:
+            surface = surface.join(dff, on="date", how="left")
+
+    out_path = _benchmark_surface_path_for_panel(output_panel_path)
+    surface.write_parquet(out_path, compression="zstd")
+    return out_path
+
+
 def export_panel(
     *,
     settings: IngestionSettings,
@@ -131,7 +206,13 @@ def export_panel(
             "Dataset manifest indicates compatibility_fallback_used=true; "
             "refusing to export a canonical downstream compatibility panel."
         )
-    panel.to_pandas().to_csv(out, index=False)
+    panel.write_csv(out)
+    benchmark_surface_path = _build_benchmark_surface(
+        settings=settings,
+        output_panel_path=out,
+        start_date=sd,
+        end_date=ed,
+    )
     export_manifest = build_export_manifest(
         output_path=out,
         contract_name="export_panel",
@@ -142,6 +223,11 @@ def export_panel(
         dataset_build_id=dataset_build_id,
         verification_artifacts=dataset_manifest.get("verification_artifacts", []),
         deferred_components=dataset_manifest.get("deferred_components", []),
+        side_artifacts={
+            "benchmark_surface_daily": str(benchmark_surface_path)
+        }
+        if benchmark_surface_path
+        else {},
     )
     export_manifest_path = write_export_manifest(export_manifest, out)
 
@@ -149,6 +235,8 @@ def export_panel(
     if not isinstance(reports, dict):
         reports = {}
     reports["export_panel_manifest"] = str(export_manifest_path)
+    if benchmark_surface_path:
+        reports["benchmark_surface_daily"] = str(benchmark_surface_path)
     dataset_manifest["reports"] = reports
     write_manifest(dataset_manifest, dataset_manifest_path(settings))
 

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import shutil
 import subprocess
 import sys
 from dataclasses import asdict, dataclass
@@ -48,6 +50,7 @@ GUARDS = [
     "bridge_guard",
     "verification_guard",
 ]
+_DOCS_SYNC_BASE_REF = "origin/main"
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -121,6 +124,282 @@ def _run_subprocess(command: list[str], *, stage: str, settings: IngestionSettin
     return str(log_path)
 
 
+def _dependency_sync_command(*, no_cache: bool = False) -> list[str]:
+    command = [
+        "uv",
+        "sync",
+        "--group",
+        "dev",
+        "--group",
+        "control-plane",
+        "--group",
+        "ingestion",
+        "--group",
+        "ingestion-test",
+        "--group",
+        "data",
+        "--group",
+        "ml",
+    ]
+    if no_cache:
+        command.append("--no-cache")
+    return command
+
+
+def _write_subprocess_log(
+    path: Path,
+    *,
+    command: list[str],
+    result: subprocess.CompletedProcess[str],
+    note: str | None = None,
+    append: bool = False,
+) -> None:
+    lines = []
+    if note:
+        lines.extend([f"[{note}]", ""])
+    lines.extend(
+        [
+            f"$ {' '.join(command)}",
+            "",
+            "STDOUT:",
+            result.stdout,
+            "",
+            "STDERR:",
+            result.stderr,
+        ]
+    )
+    payload = "\n".join(lines)
+    if append and path.exists():
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write("\n\n" + payload)
+    else:
+        path.write_text(payload, encoding="utf-8")
+
+
+def _is_uv_cache_lock_failure(result: subprocess.CompletedProcess[str]) -> bool:
+    text = f"{result.stdout}\n{result.stderr}".lower()
+    return (
+        "failed to read from the distribution cache" in text
+        and "failed to rename file" in text
+        and "os error 32" in text
+    )
+
+
+def _is_uv_venv_access_denied_failure(result: subprocess.CompletedProcess[str]) -> bool:
+    text = f"{result.stdout}\n{result.stderr}".lower()
+    return (
+        "failed to remove file" in text
+        and "access is denied" in text
+        and "os error 5" in text
+        and ".venv" in text
+        and "site-packages" in text
+    )
+
+
+def _repo_venv_helper_pids() -> list[int]:
+    if sys.platform != "win32":
+        return []
+    repo_python = (_REPO_ROOT / ".venv" / "Scripts" / "python.exe").resolve()
+    script = (
+        "$repoPython = [System.IO.Path]::GetFullPath('"
+        + str(repo_python).replace("'", "''")
+        + "');"
+        + f"$currentPid = {os.getpid()};"
+        + "Get-CimInstance Win32_Process | Where-Object { "
+        + "$_.ProcessId -ne $currentPid -and "
+        + "$_.ExecutablePath -and "
+        + "([System.IO.Path]::GetFullPath($_.ExecutablePath) -eq $repoPython) -and "
+        + "$_.CommandLine"
+        + " } | Select-Object ProcessId, CommandLine | ConvertTo-Json -Compress"
+    )
+    result = subprocess.run(
+        ["powershell", "-NoProfile", "-Command", script],
+        cwd=_REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        return []
+    raw = result.stdout.strip()
+    if not raw:
+        return []
+    parsed = json.loads(raw)
+    records = parsed if isinstance(parsed, list) else [parsed]
+    markers = (
+        "lsp_server.py",
+        "mypy-type-checker",
+        "pylance",
+        "jedi",
+        "ruff-lsp",
+        "cursor\\extensions",
+        "vscode",
+    )
+    pids: list[int] = []
+    for record in records:
+        command_line = str(record.get("CommandLine") or "").lower()
+        if any(marker in command_line for marker in markers):
+            pids.append(int(record["ProcessId"]))
+    return pids
+
+
+def _terminate_repo_venv_helper_processes() -> list[int]:
+    pids = _repo_venv_helper_pids()
+    for pid in pids:
+        subprocess.run(
+            ["taskkill", "/PID", str(pid), "/F"],
+            cwd=_REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    return pids
+
+
+def _dependency_runtime_check_command() -> list[str]:
+    return [sys.executable, "-c", "import pandas"]
+
+
+def _is_broken_bottleneck_import(result: subprocess.CompletedProcess[str]) -> bool:
+    text = f"{result.stdout}\n{result.stderr}".lower()
+    return "can't determine version for bottleneck" in text
+
+
+def _cleanup_orphaned_bottleneck() -> list[str]:
+    site_packages = _REPO_ROOT / ".venv" / "Lib" / "site-packages"
+    targets = [site_packages / "bottleneck", *site_packages.glob("bottleneck-*.dist-info")]
+    removed: list[str] = []
+    for target in targets:
+        if not target.exists():
+            continue
+        if target.is_dir():
+            shutil.rmtree(target)
+        else:
+            target.unlink()
+        removed.append(str(target))
+    return removed
+
+
+def _validate_dependency_runtime(log_path: Path) -> None:
+    command = _dependency_runtime_check_command()
+    result = subprocess.run(
+        command,
+        cwd=_REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    _write_subprocess_log(log_path, command=command, result=result, note="post-sync runtime healthcheck", append=True)
+    if result.returncode == 0:
+        return
+    if _is_broken_bottleneck_import(result):
+        removed = _cleanup_orphaned_bottleneck()
+        retry_result = subprocess.run(
+            command,
+            cwd=_REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        _write_subprocess_log(
+            log_path,
+            command=command,
+            result=retry_result,
+            note=f"retry after cleaning orphaned bottleneck: {removed}",
+            append=True,
+        )
+        if retry_result.returncode == 0:
+            return
+        raise RuntimeError(
+            f"dependency_sync runtime healthcheck failed with exit code {retry_result.returncode} after cleaning orphaned bottleneck. See {log_path}"
+        )
+    raise RuntimeError(f"dependency_sync runtime healthcheck failed with exit code {result.returncode}. See {log_path}")
+
+
+def _run_dependency_sync(settings: IngestionSettings) -> tuple[str, str]:
+    command = _dependency_sync_command()
+    log_path = _log_path(settings, "dependency_sync")
+    result = subprocess.run(
+        command,
+        cwd=_REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    _write_subprocess_log(log_path, command=command, result=result)
+    if result.returncode == 0:
+        _validate_dependency_runtime(log_path)
+        return str(log_path), " ".join(command)
+    if _is_uv_venv_access_denied_failure(result):
+        terminated_pids = _terminate_repo_venv_helper_processes()
+        if terminated_pids:
+            retry_result = subprocess.run(
+                command,
+                cwd=_REPO_ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            _write_subprocess_log(
+                log_path,
+                command=command,
+                result=retry_result,
+                note=f"retry after terminating repo venv helper processes: {terminated_pids}",
+                append=True,
+            )
+            if retry_result.returncode == 0:
+                _validate_dependency_runtime(log_path)
+                return str(log_path), " ".join(command)
+            if _is_uv_cache_lock_failure(retry_result):
+                retry_command = _dependency_sync_command(no_cache=True)
+                no_cache_retry = subprocess.run(
+                    retry_command,
+                    cwd=_REPO_ROOT,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                _write_subprocess_log(
+                    log_path,
+                    command=retry_command,
+                    result=no_cache_retry,
+                    note="retry after helper-process termination and uv cache lock",
+                    append=True,
+                )
+                if no_cache_retry.returncode == 0:
+                    _validate_dependency_runtime(log_path)
+                    return str(log_path), " ".join(retry_command)
+                raise RuntimeError(
+                    f"dependency_sync failed with exit code {no_cache_retry.returncode} after terminating helper processes and cache-lock retry. See {log_path}"
+                )
+            raise RuntimeError(
+                f"dependency_sync failed with exit code {retry_result.returncode} after terminating repo venv helper processes. See {log_path}"
+            )
+    if _is_uv_cache_lock_failure(result):
+        retry_command = _dependency_sync_command(no_cache=True)
+        retry_result = subprocess.run(
+            retry_command,
+            cwd=_REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        _write_subprocess_log(
+            log_path,
+            command=retry_command,
+            result=retry_result,
+            note="retry after uv cache lock",
+            append=True,
+        )
+        if retry_result.returncode == 0:
+            _validate_dependency_runtime(log_path)
+            return str(log_path), " ".join(retry_command)
+        raise RuntimeError(
+            f"dependency_sync failed with exit code {retry_result.returncode} after cache-lock retry. See {log_path}"
+        )
+    raise RuntimeError(f"dependency_sync failed with exit code {result.returncode}. See {log_path}")
+
+
 def _write_stage_marker(
     settings: IngestionSettings,
     *,
@@ -150,13 +429,31 @@ def _classify_blocker(exc: BaseException) -> str:
 
 def _write_dataset_manifest(settings: IngestionSettings) -> dict[str, Any]:
     datasets = _collect_manifest_datasets(settings)
+    manifest_path = dataset_manifest_path(settings)
+    existing = read_manifest(manifest_path) if manifest_path.exists() else {}
+    reports = existing.get("reports") if isinstance(existing, dict) and isinstance(existing.get("reports"), dict) else None
+    domain_statuses = (
+        existing.get("domain_statuses")
+        if isinstance(existing, dict) and isinstance(existing.get("domain_statuses"), dict)
+        else None
+    )
     manifest = build_manifest(
         datasets=datasets,
-        dataset_build_id=build_dataset_build_id(datasets) if datasets else None,
+        run_id=existing.get("run_id") if isinstance(existing, dict) else None,
+        dataset_build_id=build_dataset_build_id(datasets) if datasets else existing.get("dataset_build_id"),
         verification_artifacts=_verification_artifacts(settings),
-        deferred_components=_DEFERRED_COMPONENTS,
+        deferred_components=existing.get("deferred_components", _DEFERRED_COMPONENTS)
+        if isinstance(existing, dict)
+        else _DEFERRED_COMPONENTS,
+        reports=reports,
+        domain_statuses=domain_statuses,
+        final_status=str(existing.get("final_status", "unknown")) if isinstance(existing, dict) else "unknown",
+        canonical_export_ready=bool(existing.get("canonical_export_ready")) if isinstance(existing, dict) else False,
+        compatibility_fallback_used=bool(existing.get("compatibility_fallback_used"))
+        if isinstance(existing, dict)
+        else False,
     )
-    write_manifest(manifest, dataset_manifest_path(settings))
+    write_manifest(manifest, manifest_path)
     return manifest
 
 
@@ -296,6 +593,7 @@ def _render_status_markdown(summary: dict[str, Any]) -> str:
             f"- verification JSON: `{summary.get('verification_json')}`",
             f"- verification Markdown: `{summary.get('verification_markdown')}`",
             f"- final report path: `{summary.get('final_report_path')}`",
+            f"- strategy report template path: `{summary.get('strategy_report_template_path')}`",
             f"- status summary path: `{summary.get('status_md_path')}`",
             "",
             "## Deferred Components",
@@ -357,6 +655,7 @@ def _build_status_payload(
         "exported_panel_path": str(panel_path),
         "pipeline_output_dir": str(pipeline_output_dir),
         "final_report_path": str(pipeline_output_dir / "05_reports" / "final_report.md"),
+        "strategy_report_template_path": str((_REPO_ROOT / "strategy-report.qmd").resolve()),
         "status_md_path": str(state_paths["status_md"]),
         "state_path": str(state_paths["state"]),
         "canonical_data_updated": any(r.stage == "canonical_market_data" and r.status == "passed" for r in stage_records),
@@ -465,27 +764,7 @@ def run_e2e(
             _write_json(state_paths["state"], state)
 
             if stage == "dependency_sync":
-                command = "uv sync --group dev --group control-plane --group ingestion --group ingestion-test --group data --group ml"
-                log_path = _run_subprocess(
-                    [
-                        "uv",
-                        "sync",
-                        "--group",
-                        "dev",
-                        "--group",
-                        "control-plane",
-                        "--group",
-                        "ingestion",
-                        "--group",
-                        "ingestion-test",
-                        "--group",
-                        "data",
-                        "--group",
-                        "ml",
-                    ],
-                    stage=stage,
-                    settings=settings,
-                )
+                log_path, command = _run_dependency_sync(settings)
             elif stage == "canonical_market_data":
                 watermark = read_watermark(settings)
                 if watermark is None:
@@ -499,7 +778,7 @@ def run_e2e(
                     "dataset_build_id": dataset_manifest.get("dataset_build_id"),
                 }
             elif stage == "verify_market_data":
-                run_docs_sync_checks()
+                run_docs_sync_checks(base_ref=_DOCS_SYNC_BASE_REF)
                 _set_guard_result(guard_results, guard="docs_sync_guard", result="passed", notes="Pre-export docs sync passed.")
                 run_contract_checks(data_lake=str(settings.data_lake_root), config_dir=str(settings.configs_dir))
                 _set_guard_result(guard_results, guard="schema_guard", result="passed", notes="Canonical contracts passed pre-export.")
@@ -582,6 +861,7 @@ def run_e2e(
                         data_lake=str(settings.data_lake_root),
                         config_dir=str(settings.configs_dir),
                         panel_path=str(panel_path_obj),
+                        base_ref=_DOCS_SYNC_BASE_REF,
                     )
                     _set_guard_result(
                         guard_results,
@@ -629,6 +909,9 @@ def run_e2e(
                     "guard_results": guard_results,
                     "status": "running",
                     "updated_at": _utc_now(),
+                    "last_failed_stage": None,
+                    "blocker_classification": None,
+                    "blocker_message": None,
                 }
             )
             _write_json(state_paths["state"], state)

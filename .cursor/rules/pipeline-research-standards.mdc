@@ -1,0 +1,13 @@
+---
+description: Compatibility shim for canonical Phase 1 research standards.
+alwaysApply: true
+---
+
+# Pipeline Research Standards
+
+This `.cursor` file is generated compatibility output only.
+Primary governing files for this concern are `AGENTS.md`, `docs/phase1-research-spec.md`, `docs/phase1-execution-roadmap.md`, and `README.md`.
+Do not use this file to add or redefine repo rules.
+
+Frozen research semantics remain in the Phase 1 docs and `AGENTS.md`.
+Do not let this local file redefine them.

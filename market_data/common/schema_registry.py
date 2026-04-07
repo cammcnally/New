@@ -146,6 +146,21 @@ CORPORATE_ACTIONS = {
     "ingested_at_utc": pl.Datetime("us", "UTC"),
 }
 
+# Silver output from ``build_corporate_actions`` (Alpha Vantage bronze path)
+CORPORATE_ACTIONS_SILVER_AV_PK = ["sid", "action_type", "ex_date", "source_vendor"]
+CORPORATE_ACTIONS_SILVER_AV = {
+    "sid": pl.Utf8,
+    "action_type": pl.Utf8,
+    "ex_date": pl.Date,
+    "cash_amount": pl.Float64,
+    "split_coefficient": pl.Float64,
+    "record_date": pl.Date,
+    "payment_date": pl.Date,
+    "declared_date": pl.Date,
+    "source_vendor": pl.Utf8,
+    "loaded_at": pl.Datetime("us", "UTC"),
+}
+
 ADJUSTMENT_FACTORS_PK = ["instrument_id", "effective_date"]
 ADJUSTMENT_FACTORS = {
     "instrument_id": pl.Int64,
@@ -155,6 +170,18 @@ ADJUSTMENT_FACTORS = {
     "cum_split_factor": pl.Float64,
     "cum_total_return_factor": pl.Float64,
     "ingested_at_utc": pl.Datetime("us", "UTC"),
+}
+
+# Silver output from ``build_adjustment_factors`` (sid-keyed legacy shape)
+ADJUSTMENT_FACTORS_SILVER_AV_PK = ["sid", "effective_date"]
+ADJUSTMENT_FACTORS_SILVER_AV = {
+    "sid": pl.Utf8,
+    "effective_date": pl.Date,
+    "split_factor": pl.Float64,
+    "dividend_factor": pl.Float64,
+    "cum_split_factor": pl.Float64,
+    "cum_total_return_factor": pl.Float64,
+    "loaded_at": pl.Datetime("us", "UTC"),
 }
 
 
@@ -210,8 +237,9 @@ FUNDAMENTALS_PUBLIC_FACTS = {
 
 # ── Classification and benchmark alignment ───────────────────────────────────
 
-BENCHMARK_DEFINITIONS_PK = ["symbol"]
+BENCHMARK_DEFINITIONS_PK = ["benchmark_id"]
 BENCHMARK_DEFINITIONS = {
+    "benchmark_id": pl.Utf8,
     "group": pl.Utf8,
     "symbol": pl.Utf8,
     "benchmark_type": pl.Utf8,
@@ -245,20 +273,17 @@ INSTRUMENT_CLASSIFICATION_HISTORY = {
 
 INSTRUMENT_BENCHMARK_MAP_PK = [
     "instrument_id",
-    "mapping_type",
-    "benchmark_instrument_id",
     "effective_from_date",
 ]
 INSTRUMENT_BENCHMARK_MAP = {
     "instrument_id": pl.Int64,
-    "mapping_type": pl.Utf8,
-    "benchmark_instrument_id": pl.Int64,
-    "classification_system": pl.Utf8,
-    "mapping_confidence": pl.Float64,
+    "market_benchmark_id": pl.Utf8,
+    "sector_benchmark_id": pl.Utf8,
     "effective_from_date": pl.Date,
     "effective_to_date": pl.Date,
     "mapping_rule_version": pl.Utf8,
-    "created_at_utc": pl.Datetime("us", "UTC"),
+    "mapping_source": pl.Utf8,
+    "asof_timestamp": pl.Datetime("us", "UTC"),
 }
 
 
@@ -281,6 +306,9 @@ UNIVERSE_MEMBERSHIP_HISTORY = {
 
 
 # ── Benchmark reference prices and calendar ──────────────────────────────────
+#
+# Legacy instrument-keyed benchmark price dict (includes adj_close). Deprecated for
+# new downstream work; canonical live silver is BENCHMARK_PRICES_DAILY_SILVER.
 
 BENCHMARK_PRICES_DAILY_PK = ["instrument_id", "source", "trade_date"]
 BENCHMARK_PRICES_DAILY = {
@@ -296,6 +324,20 @@ BENCHMARK_PRICES_DAILY = {
     "volume": pl.Float64,
     "currency": pl.Utf8,
     "ingested_at_utc": pl.Datetime("us", "UTC"),
+}
+
+# Silver output from ``build_benchmark_prices_daily`` (sid-keyed slice of prices_1d_unadjusted)
+BENCHMARK_PRICES_DAILY_SILVER_PK = ["sid", "trade_date", "source_vendor"]
+BENCHMARK_PRICES_DAILY_SILVER = {
+    "sid": pl.Utf8,
+    "trade_date": pl.Date,
+    "open": pl.Float64,
+    "high": pl.Float64,
+    "low": pl.Float64,
+    "close": pl.Float64,
+    "volume": pl.Float64,
+    "source_vendor": pl.Utf8,
+    "loaded_at": pl.Datetime("us", "UTC"),
 }
 
 TRADING_CALENDAR_PK = ["trade_date", "exchange"]
